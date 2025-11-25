@@ -1,0 +1,54 @@
+# Node.js dependencies
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# Logs
+logs/
+*.log
+pids/
+*.pid
+*.seed
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# Build / dist folders (if you build frontend or transpile backend)
+dist/
+build/
+
+# IDE / Editor folders
+.vscode/
+.idea/
+*.sublime-workspace
+*.sublime-project
+
+# Mac OS files
+*.DS_Store
+
+# Debug & temporary files
+*.swp
+*.swo
+*.tmp
+
+# Coverage reports (if using Jest/nyc)
+coverage/
+*.lcov
+
+# Optional npm / Yarn package-lock
+package-lock.json
+yarn.lock
+
+# MongoDB data folder (if you store local DB)
+data/
+dump/
+
+# Optional: frontend build folder if in monorepo
+client/build/
