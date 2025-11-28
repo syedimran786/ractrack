@@ -6,26 +6,51 @@ const batchSchema = new Schema(
       type: String,
       required: true,
       trim: true,
+      lowercase: true, // 🔥 always lowercase
     },
 
-    date: { type: Date, required: true }, // Batch start date
-    // day: { type: String, required: true }, // e.g., Monday, Weekend
-    time: { type: String, required: true }, // e.g., "6:00 PM - 8:00 PM"
-    duration: { type: String, required: true }, // e.g., "3 months"
+    date: { type: Date, required: true },
+
+    time: { type: String, required: true },
+
+    duration: {
+      type: String,
+      required: true,
+      trim: true,
+      lowercase: true, // 🔥 always lowercase
+    },
+
     mode: {
       type: String,
-      enum: ["Online", "Offline", "Hybrid"],
       required: true,
+      trim: true,
+      lowercase: true, // 🔥 save as: online / offline / hybrid
+      enum: ["online", "offline", "hybrid"],
     },
-    trainer: { type: String, required: true },
+
+    trainerName: {
+      type: String,
+      required: true,
+      trim: true,
+      lowercase: true, // 🔥 always lowercase
+    },
+
+    trainerEmail: {
+      type: String,
+      required: true,
+      trim: true,
+      lowercase: true,
+      match: [/^\S+@\S+\.\S+$/, "Please provide a valid email"], // basic email validation
+    },
+
     isDeleted: { type: Boolean, default: false },
     deletedAt: { type: Date, default: null },
   },
   { timestamps: true }
 );
 
-// optimization for queries
-batchSchema.index({ date: 1, trainer: 1, courseName: 1 });
+// 🔥 Optimized index for faster duplicate lookup
+batchSchema.index({ date: 1, trainerEmail: 1, courseName: 1, time: 1 });
 
 const Batch = model("Batch", batchSchema);
 
