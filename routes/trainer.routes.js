@@ -1,7 +1,7 @@
 const express = require("express");
 const router = express.Router();
 
-const upload = require("../middlewares/upload");
+const { multiFileUpload } = require("../middlewares/upload");
 
 const {
   createTrainer,
@@ -13,25 +13,26 @@ const {
   deleteTrainer,
 } = require("../controllers/trainer.controller");
 
-// Create trainer
-router.post("/addtrainer", upload.single("image"), createTrainer);
+router.post(
+  "/add",
+  multiFileUpload([{ name: "image", maxCount: 1 }]),
+  createTrainer
+);
 
-// Get all trainers
-router.get("/gettrainers", getTrainers);
+router.get("/", getTrainers);
 
-// Get single trainer
-router.get("/gettrainer/:id", getTrainerById);
+router.get("/:id", getTrainerById);
 
-// Update trainer
-router.put("/updatetrainer/:id", upload.single("image"), updateTrainer);
+router.put(
+  "/update/:id",
+  multiFileUpload([{ name: "image", maxCount: 1 }]),
+  updateTrainer
+);
 
-// Soft delete trainer
 router.patch("/soft-delete/:id", softDeleteTrainer);
 
-// Restore trainer
 router.patch("/restore/:id", restoreTrainer);
 
-// Hard delete trainer
 router.delete("/hard-delete/:id", deleteTrainer);
 
 module.exports = router;

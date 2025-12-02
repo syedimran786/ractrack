@@ -11,6 +11,7 @@ const errorHandler = require("./middlewares/errorHandler");
 // Import module routes
 const batchRoutes = require("./routes/batch.routes");
 const trainerRoutes = require("./routes/trainer.routes");
+const placementRoutes = require("./routes/placement.routes");
 
 
 const app = express();
@@ -69,6 +70,7 @@ app.use(morgan("dev"));
 // ------------------------------------
 app.use("/api/batches", batchRoutes);
 app.use("/api/trainers", trainerRoutes);
+app.use("/api/placements", placementRoutes);
 
 // ------------------------------------
 // 8. Global Error Handler
