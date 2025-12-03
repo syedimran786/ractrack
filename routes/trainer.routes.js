@@ -15,7 +15,7 @@ const {
 
 router.post(
   "/add",
-  multiFileUpload([{ name: "image", maxCount: 1 }]),
+  multiFileUpload([{ name: "trainerImage", maxCount: 1 }]),
   createTrainer
 );
 

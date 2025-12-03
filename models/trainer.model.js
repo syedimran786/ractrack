@@ -1,3 +1,4 @@
+// models/trainer.model.js
 const { Schema, model } = require("mongoose");
 
 const trainerSchema = new Schema(
@@ -8,6 +9,7 @@ const trainerSchema = new Schema(
       trim: true,
       lowercase: true,
     },
+
     email: {
       type: String,
       required: true,
@@ -15,24 +17,55 @@ const trainerSchema = new Schema(
       lowercase: true,
       unique: true,
       match: [/^\S+@\S+\.\S+$/, "Please provide a valid email"],
+      index: true,
     },
 
     // Cloudinary fields
     imageUrl: { type: String, trim: true },
     imageId: { type: String, trim: true },
 
+    // Hash to avoid duplicate trainer image uploads
+    imageHash: { type: String, trim: true, index: true },
+
     designation: { type: String, trim: true, lowercase: true },
     linkedin: { type: String, trim: true },
     facebook: { type: String, trim: true },
     instagram: { type: String, trim: true },
 
-    isDeleted: { type: Boolean, default: false },
+    // Soft delete fields
+    isDeleted: { type: Boolean, default: false, index: true },
     deletedAt: { type: Date, default: null },
   },
   { timestamps: true }
 );
 
-// Index for fast lookup
-trainerSchema.index({ email: 1 });
+/* ======================================================
+   INDEXES (Performance)
+====================================================== */
+
+// Unique email
+trainerSchema.index({ email: 1 }, { unique: true });
+
+// Improve list queries for non-deleted trainers
+trainerSchema.index({ isDeleted: 1, createdAt: -1 });
+
+// Improve lookup for duplicate image hash
+trainerSchema.index({ imageHash: 1 });
+
+/* ======================================================
+   PRE-SAVE NORMALIZATION
+====================================================== */
+trainerSchema.pre("save", function (next) {
+  if (this.trainerName) {
+    this.trainerName = this.trainerName.trim().toLowerCase();
+  }
+  if (this.email) {
+    this.email = this.email.trim().toLowerCase();
+  }
+  if (this.designation) {
+    this.designation = this.designation.trim().toLowerCase();
+  }
+  next();
+});
 
 module.exports = model("Trainer", trainerSchema);

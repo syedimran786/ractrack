@@ -1,127 +1,178 @@
+const Company = require("../models/company.model");
 const asyncHandler = require("../middlewares/asyncHandler");
 const ApiError = require("../utils/ApiError");
 const ApiResponse = require("../utils/ApiResponse");
-const Company = require("../models/company.model");
-const mongoose = require("mongoose");
-const crypto = require("crypto");
-const { uploadImageService, deleteImageService } = require("../services/cloudinaryImageService");
+const { optimizeImage } = require("../utils/imageProcessor");
+const { uploadToCloudinary, deleteFromCloudinary } = require("../services/cloudinaryImageService");
 
-const isValidObjectId = (id) => mongoose.Types.ObjectId.isValid(id);
-const hashBuffer = (buffer) => crypto.createHash("sha256").update(buffer).digest("hex");
-
-const processImage = async (file, oldId, oldHash, folder = "companies") => {
-  const newBuffer = file.buffer;
-  const newHash = hashBuffer(newBuffer);
-
-  if (newHash === oldHash) return { url: null, public_id: null, hash: oldHash, changed: false };
-
-  if (oldId) await deleteImageService(oldId);
-
-  const uploaded = await uploadImageService(newBuffer, folder);
-  return { url: uploaded.url, public_id: uploaded.public_id, hash: newHash, changed: true };
-};
-
-/* CREATE COMPANY */
+/* ======================================================
+   CREATE COMPANY (name validation → image validation)
+====================================================== */
 const createCompany = asyncHandler(async (req, res) => {
   const { companyName } = req.body;
-  const existing = await Company.findOne({ companyName });
-  if (existing) throw new ApiError(409, "Company with this name already exists");
 
-  let companyImage = {};
-  if (req.files?.companyImage) {
-    const buffer = req.files.companyImage[0].buffer;
-    const uploaded = await uploadImageService(buffer, "companies");
-    companyImage = {
-      companyImageUrl: uploaded.url,
-      companyImageId: uploaded.public_id,
-      companyImageHash: hashBuffer(buffer),
-    };
+  if (!companyName || !companyName.trim()) {
+    throw new ApiError(400, "Company name is required");
   }
 
-  const company = await Company.create({ companyName, ...companyImage });
-  return res.status(201).json(new ApiResponse(201, company, "Company created successfully"));
+  // 1️⃣ Validate company name
+  const nameExists = await Company.findOne({
+    companyName: companyName.trim().toLowerCase(),
+  });
+
+  if (nameExists) {
+    throw new ApiError(409, "Company name already exists");
+  }
+
+  // 2️⃣ Validate company image
+  if (!req.files?.companyImage?.[0]) {
+    throw new ApiError(400, "Company image is required");
+  }
+
+  const file = req.files.companyImage[0];
+  const rawHash = file.fileHash;
+
+  const existingImage = await Company.findOne({ companyImageHash: rawHash });
+  if (existingImage) {
+    throw new ApiError(409, "Company image already added");
+  }
+
+  // 3️⃣ Upload image
+  const optimized = await optimizeImage(file.buffer);
+  const uploaded = await uploadToCloudinary(optimized, "companies");
+
+  const company = await Company.create({
+    companyName,
+    companyImageUrl: uploaded.secure_url,
+    companyImageId: uploaded.public_id,
+    companyImageHash: rawHash,
+  });
+
+  res
+    .status(201)
+    .json(new ApiResponse(201, company, "Company created successfully"));
 });
 
-/* GET ALL COMPANIES */
-const getCompanies = asyncHandler(async (req, res) => {
-  const companies = await Company.find({ isDeleted: false }).sort({ createdAt: -1 });
-  return res.status(200).json(new ApiResponse(200, companies, "All companies fetched successfully"));
-});
-
-/* GET SINGLE COMPANY */
-const getCompanyById = asyncHandler(async (req, res) => {
-  const { id } = req.params;
-  if (!isValidObjectId(id)) throw new ApiError(400, "Invalid Company ID");
-
-  const company = await Company.findOne({ _id: id, isDeleted: false });
-  if (!company) throw new ApiError(404, "Company not found");
-
-  return res.status(200).json(new ApiResponse(200, company, "Company fetched successfully"));
-});
-
-/* UPDATE COMPANY */
+/* ======================================================
+   UPDATE COMPANY (name validation → image validation)
+====================================================== */
 const updateCompany = asyncHandler(async (req, res) => {
   const { id } = req.params;
-  const { companyName } = req.body;
-  if (!isValidObjectId(id)) throw new ApiError(400, "Invalid Company ID");
-
-  const existing = await Company.findById(id);
-  if (!existing) throw new ApiError(404, "Company not found");
-
-  const nameOwner = await Company.findOne({ companyName, _id: { $ne: id } });
-  if (nameOwner) throw new ApiError(409, "Company with this name already exists");
-
-  let updatedData = { companyName };
-  if (req.files?.companyImage) {
-    const result = await processImage(req.files.companyImage[0], existing.companyImageId, existing.companyImageHash);
-    if (result.changed) {
-      updatedData.companyImageUrl = result.url;
-      updatedData.companyImageId = result.public_id;
-      updatedData.companyImageHash = result.hash;
-    }
-  }
-
-  const updated = await Company.findByIdAndUpdate(id, updatedData, { new: true, runValidators: true });
-  return res.status(200).json(new ApiResponse(200, updated, "Company updated successfully"));
-});
-
-/* SOFT DELETE COMPANY */
-const softDeleteCompany = asyncHandler(async (req, res) => {
-  const { id } = req.params;
-  if (!isValidObjectId(id)) throw new ApiError(400, "Invalid Company ID");
-
-  const company = await Company.findByIdAndUpdate(id, { isDeleted: true, deletedAt: new Date() }, { new: true });
-  if (!company) throw new ApiError(404, "Company not found");
-
-  return res.status(200).json(new ApiResponse(200, company, "Company soft-deleted"));
-});
-
-/* RESTORE COMPANY */
-const restoreCompany = asyncHandler(async (req, res) => {
-  const { id } = req.params;
-  if (!isValidObjectId(id)) throw new ApiError(400, "Invalid Company ID");
-
-  const company = await Company.findByIdAndUpdate(id, { isDeleted: false, deletedAt: null }, { new: true });
-  if (!company) throw new ApiError(404, "Company not found");
-
-  return res.status(200).json(new ApiResponse(200, company, "Company restored successfully"));
-});
-
-/* HARD DELETE COMPANY */
-const deleteCompany = asyncHandler(async (req, res) => {
-  const { id } = req.params;
-  if (!isValidObjectId(id)) throw new ApiError(400, "Invalid Company ID");
-
   const company = await Company.findById(id);
   if (!company) throw new ApiError(404, "Company not found");
 
-  if (company.companyImageId) await deleteImageService(company.companyImageId);
-  await Company.findByIdAndDelete(id);
+  const { companyName } = req.body;
 
-  return res.status(200).json(new ApiResponse(200, {}, "Company permanently deleted"));
+  // 1️⃣ Validate new company name (if provided)
+  if (companyName) {
+    const nameExists = await Company.findOne({
+      companyName: companyName.trim().toLowerCase(),
+      _id: { $ne: id }, // exclude current company
+    });
+
+    if (nameExists) {
+      throw new ApiError(409, "Another company already uses this name");
+    }
+
+    company.companyName = companyName;
+  }
+
+  // 2️⃣ Handle image update
+  if (req.files?.companyImage?.[0]) {
+    const file = req.files.companyImage[0];
+    const rawHash = file.fileHash;
+
+    const existingImage = await Company.findOne({
+      companyImageHash: rawHash,
+      _id: { $ne: id },
+    });
+
+    if (existingImage) {
+      throw new ApiError(409, "Company image already added");
+    }
+
+    // Delete old image in Cloudinary
+    if (company.companyImageId) {
+      await deleteFromCloudinary(company.companyImageId);
+    }
+
+    const optimized = await optimizeImage(file.buffer);
+    const uploaded = await uploadToCloudinary(optimized, "companies");
+
+    company.companyImageUrl = uploaded.secure_url;
+    company.companyImageId = uploaded.public_id;
+    company.companyImageHash = rawHash;
+  }
+
+  await company.save();
+
+  res.json(new ApiResponse(200, company, "Company updated successfully"));
 });
 
-/* EXPORTS */
+/* ======================================================
+   GET ALL COMPANIES
+====================================================== */
+const getCompanies = asyncHandler(async (req, res) => {
+  const companies = await Company.find({ isDeleted: false });
+  res.json(new ApiResponse(200, companies));
+});
+
+/* ======================================================
+   GET COMPANY BY ID
+====================================================== */
+const getCompanyById = asyncHandler(async (req, res) => {
+  const company = await Company.findById(req.params.id);
+  if (!company) throw new ApiError(404, "Company not found");
+  res.json(new ApiResponse(200, company));
+});
+
+/* ======================================================
+   SOFT DELETE
+====================================================== */
+const softDeleteCompany = asyncHandler(async (req, res) => {
+  const company = await Company.findById(req.params.id);
+  if (!company) throw new ApiError(404, "Company not found");
+
+  company.isDeleted = true;
+  company.deletedAt = new Date();
+  await company.save();
+
+  res.json(new ApiResponse(200, company, "Company soft deleted"));
+});
+
+/* ======================================================
+   RESTORE
+====================================================== */
+const restoreCompany = asyncHandler(async (req, res) => {
+  const company = await Company.findById(req.params.id);
+  if (!company) throw new ApiError(404, "Company not found");
+
+  company.isDeleted = false;
+  company.deletedAt = null;
+  await company.save();
+
+  res.json(new ApiResponse(200, company, "Company restored"));
+});
+
+/* ======================================================
+   HARD DELETE
+====================================================== */
+const deleteCompany = asyncHandler(async (req, res) => {
+  const company = await Company.findById(req.params.id);
+  if (!company) throw new ApiError(404, "Company not found");
+
+  if (company.companyImageId) {
+    await deleteFromCloudinary(company.companyImageId);
+  }
+
+  await company.deleteOne();
+
+  res.json(new ApiResponse(200, null, "Company permanently deleted"));
+});
+
+/* ======================================================
+   EXPORTS
+====================================================== */
 module.exports = {
   createCompany,
   getCompanies,
