@@ -1,7 +1,7 @@
 const express = require("express");
 const router = express.Router();
-
 const { multiFileUpload } = require("../middlewares/upload");
+
 const {
   createStudent,
   getStudents,
@@ -12,47 +12,37 @@ const {
   deleteStudent,
 } = require("../controllers/student.controller");
 
-// ----------------------
+/* ======================================================
+   STUDENT ROUTES
+====================================================== */
+
 // Create Student
-// ----------------------
 router.post(
-  "/addstudent",
+  "/add",
   multiFileUpload([{ name: "photo", maxCount: 1 }]),
   createStudent
 );
 
-// ----------------------
-// Get All Students
-// ----------------------
-router.get("/getstudents", getStudents);
+// Get All
+router.get("/", getStudents);
 
-// ----------------------
-// Get Single Student
-// ----------------------
-router.get("/getstudent/:id", getStudentById);
+// Get Single
+router.get("/:id", getStudentById);
 
-// ----------------------
-// Update Student
-// ----------------------
+// Update
 router.put(
-  "/updatestudent/:id",
+  "/update/:id",
   multiFileUpload([{ name: "photo", maxCount: 1 }]),
   updateStudent
 );
 
-// ----------------------
-// Soft Delete Student
-// ----------------------
+// Soft Delete
 router.patch("/soft-delete/:id", softDeleteStudent);
 
-// ----------------------
-// Restore Student
-// ----------------------
+// Restore
 router.patch("/restore/:id", restoreStudent);
 
-// ----------------------
-// Hard Delete Student
-// ----------------------
+// Hard Delete
 router.delete("/hard-delete/:id", deleteStudent);
 
 module.exports = router;

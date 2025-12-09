@@ -50,91 +50,34 @@ const studentSchema = new Schema(
       trim: true,
     },
 
-    tenthPercentage: {
-      type: Number,
-      required: true,
-      min: 0,
-      max: 100,
-    },
+    tenthPercentage: { type: Number, min: 0, max: 100, required: true },
+    pucPercentage: { type: Number, min: 0, max: 100, required: true },
 
-    pucPercentage: {
-      type: Number,
-      required: true,
-      min: 0,
-      max: 100,
-    },
+    ugDegree: { type: String, trim: true, lowercase: true, required: true },
+    ugStream: { type: String, trim: true, lowercase: true, required: true },
+    ugPercentage: { type: Number, min: 0, max: 100, required: true },
+    ugYop: { type: Number, required: true },
 
-    ugDegree: {
-      type: String,
-      required: true,
-      trim: true,
-      lowercase: true,
-    },
+    pgDegree: { type: String, trim: true, lowercase: true, required: true },
+    pgStream: { type: String, trim: true, lowercase: true, required: true },
+    pgPercentage: { type: Number, min: 0, max: 100, required: true },
+    pgYop: { type: Number, required: true },
 
-    ugStream: {
-      type: String,
-      required: true,
-      trim: true,
-      lowercase: true,
-    },
+    aggregate: { type: Number, min: 0, max: 100, required: true },
 
-    ugPercentage: {
-      type: Number,
-      required: true,
-      min: 0,
-      max: 100,
-    },
-
-    ugYop: {
-      type: Number,
-      required: true,
-    },
-
-    pgDegree: {
-      type: String,
-      required: true,
-      trim: true,
-      lowercase: true,
-    },
-
-    pgStream: {
-      type: String, 
-      required: true,
-      trim: true,
-      lowercase: true,
-    },
-
-    pgPercentage: {
-      type: Number,
-      required: true,
-      min: 0,
-      max: 100,
-    },
-
-    pgYop: {
-      type: Number,
-      required: true,
-    },
-
-    aggregate: {
-      type: Number,
-      required: true,
-      min: 0,
-      max: 100,
-    },
-
-    // Cloudinary photo fields
+    // Photo Fields (Company Style)
     photoUrl: { type: String, trim: true },
     photoId: { type: String, trim: true },
-    photoHash: { type: String, trim: true },
+    photoHash: { type: String, trim: true, index: true },
 
-    isDeleted: { type: Boolean, default: false },
+    // Soft Delete
+    isDeleted: { type: Boolean, default: false, index: true },
     deletedAt: { type: Date, default: null },
   },
   { timestamps: true }
 );
 
-// Index for fast lookup
+// Index
 studentSchema.index({ email: 1 });
 
 module.exports = model("Student", studentSchema);

@@ -1,285 +1,183 @@
+const Student = require("../models/student.model");
 const asyncHandler = require("../middlewares/asyncHandler");
 const ApiError = require("../utils/ApiError");
 const ApiResponse = require("../utils/ApiResponse");
-const Student = require("../models/student.model");
-const mongoose = require("mongoose");
-const crypto = require("crypto");
-const { uploadImageService, deleteImageService } = require("../services/cloudinaryImageService");
+const { optimizeImage } = require("../utils/imageProcessor");
+const {
+  uploadToCloudinary,
+  deleteFromCloudinary,
+} = require("../services/cloudinaryImageService");
 
-// Validate ObjectId
-const isValidObjectId = (id) => mongoose.Types.ObjectId.isValid(id);
-
-// Hash generator
-const hashBuffer = (buffer) =>
-  crypto.createHash("sha256").update(buffer).digest("hex");
-
-// Reusable image processor
-const processImage = async (file, oldId, oldHash, folder = "students") => {
-  const newBuffer = file.buffer;
-  const newHash = hashBuffer(newBuffer);
-
-  if (newHash === oldHash) {
-    return { url: null, public_id: null, hash: oldHash, changed: false };
-  }
-
-  if (oldId) await deleteImageService(oldId);
-
-  const uploaded = await uploadImageService(newBuffer, folder);
-
-  return {
-    url: uploaded.url,
-    public_id: uploaded.public_id,
-    hash: newHash,
-    changed: true,
-  };
-};
-
-/* =====================================================
+/* ======================================================
    CREATE STUDENT
-===================================================== */
+====================================================== */
 const createStudent = asyncHandler(async (req, res) => {
-  const {
-    studentName,
-    mobile,
-    email,
-    adharNumber,
-    fatherName,
-    collegeName,
-    address,
-    tenthPercentage,
-    pucPercentage,
-    ugDegree,
-    ugStream,
-    ugPercentage,
-    ugYop,
-    pgDegree,
-    pgStream,
-    pgPercentage,
-    pgYop,
-    aggregate,
-  } = req.body;
+  const { email } = req.body;
 
-  const existing = await Student.findOne({ email });
-  if (existing) throw new ApiError(409, "Student with this email already exists");
-
-  let photoData = {};
-
-  if (req.files?.photo) {
-    const buffer = req.files.photo[0].buffer;
-    const uploaded = await uploadImageService(buffer, "students");
-    photoData = {
-      photoUrl: uploaded.url,
-      photoId: uploaded.public_id,
-      photoHash: hashBuffer(buffer),
-    };
+  if (!email || !email.trim()) {
+    throw new ApiError(400, "Student email is required");
   }
+
+  // 1️⃣ Validate duplicate email
+  const emailExists = await Student.findOne({ email: email.trim().toLowerCase() });
+  if (emailExists) throw new ApiError(409, "Student email already exists");
+
+  // 2️⃣ Validate photo presence
+  if (!req.files?.photo?.[0]) {
+    throw new ApiError(400, "Student photo is required");
+  }
+
+  const file = req.files.photo[0];
+  const rawHash = file.fileHash;
+
+  // 3️⃣ Reject duplicate image
+  const existingPhoto = await Student.findOne({ photoHash: rawHash });
+  if (existingPhoto) {
+    throw new ApiError(409, "Student photo already uploaded");
+  }
+
+  // 4️⃣ Upload Photo
+  const optimized = await optimizeImage(file.buffer);
+  const uploaded = await uploadToCloudinary(optimized, "students");
 
   const student = await Student.create({
-    studentName,
-    mobile,
-    email,
-    adharNumber,
-    fatherName,
-    collegeName,
-    address,
-    tenthPercentage,
-    pucPercentage,
-    ugDegree,
-    ugStream,
-    ugPercentage,
-    ugYop,
-    pgDegree,
-    pgStream,
-    pgPercentage,
-    pgYop,
-    aggregate,
-    ...photoData,
+    ...req.body,
+    photoUrl: uploaded.secure_url,
+    photoId: uploaded.public_id,
+    photoHash: rawHash,
   });
 
-  return res
+  res
     .status(201)
     .json(new ApiResponse(201, student, "Student created successfully"));
 });
 
-/* =====================================================
-   GET ALL STUDENTS
-===================================================== */
-const getStudents = asyncHandler(async (req, res) => {
-  const students = await Student.find({ isDeleted: false }).sort({
-    createdAt: -1,
-  });
-  return res
-    .status(200)
-    .json(new ApiResponse(200, students, "All students fetched successfully"));
-});
-
-/* =====================================================
-   GET SINGLE STUDENT
-===================================================== */
-const getStudentById = asyncHandler(async (req, res) => {
-  const { id } = req.params;
-
-  if (!isValidObjectId(id)) throw new ApiError(400, "Invalid Student ID");
-
-  const student = await Student.findById(id);
-  if (!student) throw new ApiError(404, "Student not found");
-
-  return res
-    .status(200)
-    .json(new ApiResponse(200, student, "Student fetched successfully"));
-});
-
-/* =====================================================
+/* ======================================================
    UPDATE STUDENT
-===================================================== */
+====================================================== */
 const updateStudent = asyncHandler(async (req, res) => {
   const { id } = req.params;
 
-  if (!isValidObjectId(id)) throw new ApiError(400, "Invalid Student ID");
-
-  const existing = await Student.findById(id);
-  if (!existing) throw new ApiError(404, "Student not found");
-
-  const {
-    studentName,
-    mobile,
-    email,
-    adharNumber,
-    fatherName,
-    collegeName,
-    address,
-    tenthPercentage,
-    pucPercentage,
-    ugDegree,
-    ugStream,
-    ugPercentage,
-    ugYop,
-    pgDegree,
-    pgStream,
-    pgPercentage,
-    pgYop,
-    aggregate,
-  } = req.body;
-
-  const emailOwner = await Student.findOne({ email, _id: { $ne: id } });
-  if (emailOwner)
-    throw new ApiError(409, "Student with this email already exists");
-
-  let updatedData = {
-    studentName,
-    mobile,
-    email,
-    adharNumber,
-    fatherName,
-    collegeName,
-    address,
-    tenthPercentage,
-    pucPercentage,
-    ugDegree,
-    ugStream,
-    ugPercentage,
-    ugYop,
-    pgDegree,
-    pgStream,
-    pgPercentage,
-    pgYop,
-    aggregate,
-  };
-
-  // Remove undefined fields
-  Object.keys(updatedData).forEach(
-    (key) => updatedData[key] === undefined && delete updatedData[key]
-  );
-
-  // Process image
-  if (req.files?.photo) {
-    const result = await processImage(
-      req.files.photo[0],
-      existing.photoId,
-      existing.photoHash
-    );
-    if (result.changed) {
-      updatedData.photoUrl = result.url;
-      updatedData.photoId = result.public_id;
-      updatedData.photoHash = result.hash;
-    }
-  }
-
-  const updatedStudent = await Student.findByIdAndUpdate(id, updatedData, {
-    new: true,
-    runValidators: true,
-  });
-
-  return res
-    .status(200)
-    .json(new ApiResponse(200, updatedStudent, "Student updated successfully"));
-});
-
-/* =====================================================
-   SOFT DELETE STUDENT
-===================================================== */
-const softDeleteStudent = asyncHandler(async (req, res) => {
-  const { id } = req.params;
-
-  if (!isValidObjectId(id)) throw new ApiError(400, "Invalid Student ID");
-
-  const student = await Student.findByIdAndUpdate(
-    id,
-    { isDeleted: true, deletedAt: new Date() },
-    { new: true }
-  );
-
-  if (!student) throw new ApiError(404, "Student not found");
-
-  return res
-    .status(200)
-    .json(new ApiResponse(200, student, "Student soft-deleted"));
-});
-
-/* =====================================================
-   RESTORE STUDENT
-===================================================== */
-const restoreStudent = asyncHandler(async (req, res) => {
-  const { id } = req.params;
-
-  if (!isValidObjectId(id)) throw new ApiError(400, "Invalid Student ID");
-
-  const student = await Student.findByIdAndUpdate(
-    id,
-    { isDeleted: false, deletedAt: null },
-    { new: true }
-  );
-
-  if (!student) throw new ApiError(404, "Student not found");
-
-  return res
-    .status(200)
-    .json(new ApiResponse(200, student, "Student restored successfully"));
-});
-
-/* =====================================================
-   HARD DELETE STUDENT
-===================================================== */
-const deleteStudent = asyncHandler(async (req, res) => {
-  const { id } = req.params;
-
-  if (!isValidObjectId(id)) throw new ApiError(400, "Invalid Student ID");
-
   const student = await Student.findById(id);
   if (!student) throw new ApiError(404, "Student not found");
 
-  if (student.photoId) await deleteImageService(student.photoId);
+  const { email } = req.body;
 
-  await Student.findByIdAndDelete(id);
+  // 1️⃣ Validate email uniqueness
+  if (email) {
+    const emailExists = await Student.findOne({
+      email: email.trim().toLowerCase(),
+      _id: { $ne: id },
+    });
 
-  return res
-    .status(200)
-    .json(new ApiResponse(200, {}, "Student permanently deleted"));
+    if (emailExists) {
+      throw new ApiError(409, "Another student already uses this email");
+    }
+
+    student.email = email;
+  }
+
+  // 2️⃣ Handle photo update
+  if (req.files?.photo?.[0]) {
+    const file = req.files.photo[0];
+    const rawHash = file.fileHash;
+
+    const existingPhoto = await Student.findOne({
+      photoHash: rawHash,
+      _id: { $ne: id },
+    });
+
+    if (existingPhoto) {
+      throw new ApiError(409, "Student photo already uploaded");
+    }
+
+    // Delete old image
+    if (student.photoId) {
+      await deleteFromCloudinary(student.photoId);
+    }
+
+    const optimized = await optimizeImage(file.buffer);
+    const uploaded = await uploadToCloudinary(optimized, "students");
+
+    student.photoUrl = uploaded.secure_url;
+    student.photoId = uploaded.public_id;
+    student.photoHash = rawHash;
+  }
+
+  // 3️⃣ Update other fields
+  Object.keys(req.body).forEach((key) => {
+    if (req.body[key] !== undefined) student[key] = req.body[key];
+  });
+
+  await student.save();
+
+  res.json(new ApiResponse(200, student, "Student updated successfully"));
 });
 
-/* =====================================================
+/* ======================================================
+   GET ALL STUDENTS
+====================================================== */
+const getStudents = asyncHandler(async (req, res) => {
+  const students = await Student.find({ isDeleted: false });
+  res.json(new ApiResponse(200, students));
+});
+
+/* ======================================================
+   GET STUDENT BY ID
+====================================================== */
+const getStudentById = asyncHandler(async (req, res) => {
+  const student = await Student.findById(req.params.id);
+  if (!student) throw new ApiError(404, "Student not found");
+  res.json(new ApiResponse(200, student));
+});
+
+/* ======================================================
+   SOFT DELETE
+====================================================== */
+const softDeleteStudent = asyncHandler(async (req, res) => {
+  const student = await Student.findById(req.params.id);
+  if (!student) throw new ApiError(404, "Student not found");
+
+  student.isDeleted = true;
+  student.deletedAt = new Date();
+  await student.save();
+
+  res.json(new ApiResponse(200, student, "Student soft deleted"));
+});
+
+/* ======================================================
+   RESTORE
+====================================================== */
+const restoreStudent = asyncHandler(async (req, res) => {
+  const student = await Student.findById(req.params.id);
+  if (!student) throw new ApiError(404, "Student not found");
+
+  student.isDeleted = false;
+  student.deletedAt = null;
+  await student.save();
+
+  res.json(new ApiResponse(200, student, "Student restored"));
+});
+
+/* ======================================================
+   HARD DELETE
+====================================================== */
+const deleteStudent = asyncHandler(async (req, res) => {
+  const student = await Student.findById(req.params.id);
+  if (!student) throw new ApiError(404, "Student not found");
+
+  if (student.photoId) {
+    await deleteFromCloudinary(student.photoId);
+  }
+
+  await student.deleteOne();
+
+  res.json(new ApiResponse(200, null, "Student permanently deleted"));
+});
+
+/* ======================================================
    EXPORTS
-===================================================== */
+====================================================== */
 module.exports = {
   createStudent,
   getStudents,

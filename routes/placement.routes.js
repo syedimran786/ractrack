@@ -1,5 +1,6 @@
 const express = require("express");
 const router = express.Router();
+
 const {
   createPlacement,
   getPlacements,
@@ -12,14 +13,14 @@ const {
   getOnlyPlacements,
 } = require("../controllers/placement.controller");
 
-router.post("/addplacement", createPlacement);
-router.get("/getplacements", getPlacements);
-router.get("/getplacement/:id", getPlacementById);
-router.put("/updateplacement/:id", updatePlacement);
+router.post("/add", createPlacement);
+router.get("/all", getPlacements);
+router.get("/single/:id", getPlacementById);
+router.put("/update/:id", updatePlacement);
 router.patch("/soft-delete/:id", softDeletePlacement);
 router.patch("/restore/:id", restorePlacement);
 router.delete("/hard-delete/:id", deletePlacement);
-router.get("/getreviewsonly", getReviewsOnly);
-router.get("/getonlyplacements", getOnlyPlacements);
+router.get("/reviews", getReviewsOnly);
+router.get("/only-placements", getOnlyPlacements);
 
 module.exports = router;
