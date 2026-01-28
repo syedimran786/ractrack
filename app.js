@@ -13,7 +13,7 @@ const batchRoutes = require("./routes/batch.routes");
 const trainerRoutes = require("./routes/trainer.routes");
 const placementRoutes = require("./routes/placement.routes");
 const companyRoutes = require("./routes/company.routes");
-
+const enquiryRoutes = require("./routes/enquiry.routes");
 
 
 const app = express();
@@ -70,10 +70,14 @@ app.use(morgan("dev"));
 // ------------------------------------
 // 7. API Routes
 // ------------------------------------
+
+
 app.use("/api/batches", batchRoutes);
 app.use("/api/trainers", trainerRoutes);
 app.use("/api/placements", placementRoutes);
 app.use("/api/companies", companyRoutes);
+app.use("/api/enquiries", enquiryRoutes);
+
 
 // ------------------------------------
 // 8. Global Error Handler

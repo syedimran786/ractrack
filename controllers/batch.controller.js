@@ -7,29 +7,44 @@ const ApiError = require("../utils/ApiError");
 const batchTime = require("../helpers/batchTimeHelper");
 
 // ---------------------------------------------------------
+// HELPERS
+// ---------------------------------------------------------
+const normalizeDate = (date) => {
+  const d = new Date(date);
+  d.setHours(0, 0, 0, 0);
+  return d;
+};
+
+// ---------------------------------------------------------
 // CREATE BATCH
 // ---------------------------------------------------------
 const createBatch = asyncHandler(async (req, res) => {
   const { courseName, date, time: rawTime, duration, mode, trainerEmail } = req.body;
 
-  // Normalize time
-  const time = batchTime(rawTime);
+  if (!rawTime) throw new ApiError(400, "Time is required");
+  if (!trainerEmail) throw new ApiError(400, "Trainer email is required");
 
-  // 1️⃣ Check if trainer exists
-  const trainer = await Trainer.findOne({ email: trainerEmail, isDeleted: false }).select(
-    "trainerName email"
-  );
+  const time = batchTime(rawTime);
+  const normalizedDate = normalizeDate(date);
+  const normalizedEmail = trainerEmail.toLowerCase().trim();
+
+  // 1️⃣ Validate trainer
+  const trainer = await Trainer.findOne({
+    email: normalizedEmail,
+    isDeleted: false,
+  }).select("trainerName email");
+
   if (!trainer) {
-    throw new ApiError(404, `Trainer with email "${trainerEmail}" not found`);
+    throw new ApiError(404, `Trainer with email "${normalizedEmail}" not found`);
   }
 
-  // 2️⃣ Check if trainer is busy at same date & time
+  // 2️⃣ Trainer availability check
   const existingBatch = await Batch.findOne({
-    trainerEmail,
-    date,
+    trainerEmail: normalizedEmail,
+    date: normalizedDate,
     time,
     isDeleted: false,
-  }).select("_id courseName");
+  }).select("courseName");
 
   if (existingBatch) {
     throw new ApiError(
@@ -38,15 +53,15 @@ const createBatch = asyncHandler(async (req, res) => {
     );
   }
 
-  // 3️⃣ Create batch with trainerName & trainerEmail
+  // 3️⃣ Create batch
   const batch = await Batch.create({
     courseName,
-    date,
+    date: normalizedDate,
     duration,
     mode,
+    time,
     trainerName: trainer.trainerName,
     trainerEmail: trainer.email,
-    time,
   });
 
   return res
@@ -54,35 +69,31 @@ const createBatch = asyncHandler(async (req, res) => {
     .json(new ApiResponse(201, batch, "Batch created successfully"));
 });
 
-
-
-
 // ---------------------------------------------------------
-// GET ALL BATCHES (pagination + search by courseName, trainer, day)
+// GET ALL BATCHES (pagination + search)
 // ---------------------------------------------------------
 const getBatches = asyncHandler(async (req, res) => {
-   const { page = 1, limit = 4, search = "" } = req.query;
+  const { page = 1, limit = 4, search = "" } = req.query;
+
+  const pageNum = Number(page);
+  const limitNum = Number(limit);
 
   const query = { isDeleted: false };
 
   if (search) {
     query.$or = [
       { courseName: { $regex: search, $options: "i" } },
-      { trainer: { $regex: search, $options: "i" } },
+      { trainerName: { $regex: search, $options: "i" } },
       { trainerEmail: { $regex: search, $options: "i" } },
       { mode: { $regex: search, $options: "i" } },
     ];
   }
 
-  // Pagination
   const batches = await Batch.find(query)
-    .skip((page - 1) * limit)
-    .limit(Number(limit))
+    .skip((pageNum - 1) * limitNum)
+    .limit(limitNum)
     .sort({ createdAt: -1 });
 
-
-
-    //! returns count based on query params if no query params returns total count
   const total = await Batch.countDocuments(query);
 
   return res.json(
@@ -99,9 +110,7 @@ const getBatchById = asyncHandler(async (req, res) => {
     isDeleted: false,
   });
 
-  if (!batch) {
-    throw new ApiError(404, "Batch not found");
-  }
+  if (!batch) throw new ApiError(404, "Batch not found");
 
   return res.json(new ApiResponse(200, batch, "Batch fetched successfully"));
 });
@@ -113,22 +122,28 @@ const updateBatch = asyncHandler(async (req, res) => {
   const { id } = req.params;
   const { courseName, date, time: rawTime, duration, mode, trainerEmail } = req.body;
 
-  // 1️⃣ Normalize time
-  const time = batchTime(rawTime);
+  if (!rawTime) throw new ApiError(400, "Time is required");
+  if (!trainerEmail) throw new ApiError(400, "Trainer email is required");
 
-  // 2️⃣ Fetch trainer and validate
-  const trainer = await Trainer.findOne({ email: trainerEmail, isDeleted: false }).select(
-    "trainerName email"
-  );
+  const time = batchTime(rawTime);
+  const normalizedDate = normalizeDate(date);
+  const normalizedEmail = trainerEmail.toLowerCase().trim();
+
+  // 1️⃣ Validate trainer
+  const trainer = await Trainer.findOne({
+    email: normalizedEmail,
+    isDeleted: false,
+  }).select("trainerName email");
+
   if (!trainer) {
-    throw new ApiError(404, `Trainer with email "${trainerEmail}" not found`);
+    throw new ApiError(404, `Trainer with email "${normalizedEmail}" not found`);
   }
 
-  // 3️⃣ Check if trainer already has another batch at the same date & time
+  // 2️⃣ Conflict check
   const existingBatch = await Batch.findOne({
-    _id: { $ne: id }, // exclude current batch
-    trainerEmail: trainer.email,
-    date,
+    _id: { $ne: id },
+    trainerEmail: normalizedEmail,
+    date: normalizedDate,
     time,
     isDeleted: false,
   }).select("courseName");
@@ -140,12 +155,12 @@ const updateBatch = asyncHandler(async (req, res) => {
     );
   }
 
-  // 4️⃣ Update batch explicitly
+  // 3️⃣ Update batch
   const batch = await Batch.findOneAndUpdate(
     { _id: id, isDeleted: false },
     {
       courseName: courseName.toLowerCase().trim(),
-      date,
+      date: normalizedDate,
       duration: duration.toLowerCase().trim(),
       mode: mode.toLowerCase().trim(),
       trainerName: trainer.trainerName.toLowerCase(),
@@ -157,10 +172,8 @@ const updateBatch = asyncHandler(async (req, res) => {
 
   if (!batch) throw new ApiError(404, "Batch not found");
 
-  return res.status(200).json(new ApiResponse(200, batch, "Batch updated successfully"));
+  return res.json(new ApiResponse(200, batch, "Batch updated successfully"));
 });
-
-
 
 // ---------------------------------------------------------
 // SOFT DELETE
@@ -172,9 +185,7 @@ const softDeleteBatch = asyncHandler(async (req, res) => {
     { new: true }
   );
 
-  if (!batch) {
-    throw new ApiError(404, "Batch not found or already deleted");
-  }
+  if (!batch) throw new ApiError(404, "Batch not found or already deleted");
 
   return res.json(new ApiResponse(200, batch, "Batch soft deleted"));
 });
@@ -189,9 +200,7 @@ const restoreBatch = asyncHandler(async (req, res) => {
     { new: true }
   );
 
-  if (!batch) {
-    throw new ApiError(404, "Deleted batch not found");
-  }
+  if (!batch) throw new ApiError(404, "Deleted batch not found");
 
   return res.json(new ApiResponse(200, batch, "Batch restored successfully"));
 });
@@ -202,9 +211,7 @@ const restoreBatch = asyncHandler(async (req, res) => {
 const hardDeleteBatch = asyncHandler(async (req, res) => {
   const batch = await Batch.findByIdAndDelete(req.params.id);
 
-  if (!batch) {
-    throw new ApiError(404, "Batch not found");
-  }
+  if (!batch) throw new ApiError(404, "Batch not found");
 
   return res.json(new ApiResponse(200, null, "Batch permanently deleted"));
 });

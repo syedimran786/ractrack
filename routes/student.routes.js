@@ -12,37 +12,20 @@ const {
   deleteStudent,
 } = require("../controllers/student.controller");
 
-/* ======================================================
-   STUDENT ROUTES
-====================================================== */
+const { updatePlacementInfo } = require("../controllers/studentPlacement.controller");
 
-// Create Student
-router.post(
-  "/add",
-  multiFileUpload([{ name: "photo", maxCount: 1 }]),
-  createStudent
-);
+router.post("/add", multiFileUpload([{ name: "photo", maxCount: 1 }]), createStudent);
 
-// Get All
 router.get("/", getStudents);
-
-// Get Single
 router.get("/:id", getStudentById);
 
-// Update
-router.put(
-  "/update/:id",
-  multiFileUpload([{ name: "photo", maxCount: 1 }]),
-  updateStudent
-);
+router.put("/update/:id", multiFileUpload([{ name: "photo", maxCount: 1 }]), updateStudent);
 
-// Soft Delete
 router.patch("/soft-delete/:id", softDeleteStudent);
-
-// Restore
 router.patch("/restore/:id", restoreStudent);
+router.delete("/:id", deleteStudent);
 
-// Hard Delete
-router.delete("/hard-delete/:id", deleteStudent);
+/* 🔥 Placement / Company update */
+router.patch("/placement/:id", updatePlacementInfo);
 
 module.exports = router;

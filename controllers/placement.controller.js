@@ -6,7 +6,7 @@ const ApiResponse = require("../utils/ApiResponse");
 const asyncHandler = require("../middlewares/asyncHandler");
 
 /* ---------------------------------------------
-   CREATE PLACEMENT
+   CREATE PLACEMENT (//! Front end create only mobile number or email field if exists only then allow student to add companyId(image seelction with id), companyDesignation, rating, review)
 ----------------------------------------------*/
 const createPlacement = asyncHandler(async (req, res) => {
   const { mobile, email, companyId, companyDesignation, rating, review } = req.body;
@@ -170,6 +170,7 @@ const getReviewsOnly = asyncHandler(async (req, res) => {
       companyName: 1,
       rating: 1,
       review: 1,
+      department: 1,
       studentImage: 1,
     }
   ).sort({ createdAt: -1 });
@@ -187,10 +188,10 @@ const getOnlyPlacements = asyncHandler(async (req, res) => {
     { isDeleted: false },
     {
       fullName: 1,
-      department: 1,
+  
       companyName: 1,
       companyDesignation: 1,
-      studentImage: 1,
+      studeImage: 1,
       companyImage: 1,
     }
   ).sort({ createdAt: -1 });
