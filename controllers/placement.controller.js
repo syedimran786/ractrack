@@ -1,214 +1,164 @@
+const asyncHandler = require("express-async-handler");
 const Placement = require("../models/placement.model");
 const Student = require("../models/student.model");
-const Company = require("../models/company.model");
 const ApiError = require("../utils/ApiError");
 const ApiResponse = require("../utils/ApiResponse");
-const asyncHandler = require("../middlewares/asyncHandler");
 
-/* ---------------------------------------------
-   CREATE PLACEMENT (//! Front end create only mobile number or email field if exists only then allow student to add companyId(image seelction with id), companyDesignation, rating, review)
-----------------------------------------------*/
-const createPlacement = asyncHandler(async (req, res) => {
-  const { mobile, email, companyId, companyDesignation, rating, review } = req.body;
+/* =====================================================
+   1️⃣ GET ALL PLACEMENTS
+===================================================== */
 
-  // Student lookup
-  if (!mobile && !email)
-    throw new ApiError(400, "Provide either mobile or email to identify student");
-
-  const student = await Student.findOne({
-    $or: [{ mobile }, { email }],
-  });
-
-  if (!student) throw new ApiError(404, "Student not found");
-
-  // Company lookup
-  const company = await Company.findById(companyId);
-  if (!company) throw new ApiError(404, "Company not found");
-
-  // Prevent duplicate placement
-  const exists = await Placement.findOne({
-    studentId: student._id,
-    companyId: company._id,
-  });
-
-  if (exists) throw new ApiError(400, "Student already placed in this company");
-
-  const placement = await Placement.create({
-    studentId: student._id,
-    companyId: company._id,
-
-    fullName: student.studentName,
-    department: student.ugStream,
-    studentEmail: student.email,
-    studentMobile: student.mobile,
-    studentImage: student.photoUrl,
-
-    companyName: company.companyName,
-    companyImage: company.companyImageUrl,
-
-    companyDesignation,
-    rating,
-    review,
-  });
-
-  return res
-    .status(201)
-    .json(new ApiResponse(201, placement, "Placement created successfully"));
-});
-
-/* ---------------------------------------------
-   GET ALL PLACEMENTS
-----------------------------------------------*/
 const getPlacements = asyncHandler(async (req, res) => {
-  const { department, companyName } = req.query;
+  const {
+    page = 1,
+    limit = 10,
+    search,
+    companyId,
+    ugStream,
+    fromDate,
+    toDate,
+  } = req.query;
 
-  const filter = { isDeleted: false };
+  const query = { isDeleted: false };
 
-  if (department) filter.department = department.toLowerCase();
-  if (companyName) filter.companyName = companyName.toLowerCase();
+  if (search) {
+    query.$text = { $search: search };
+  }
 
-  const placements = await Placement.find(filter).sort({ createdAt: -1 });
+  if (companyId) query.companyId = companyId;
 
-  return res
-    .status(200)
-    .json(new ApiResponse(200, placements, "Placements fetched successfully"));
+  if (ugStream) query.ugStream = ugStream.toLowerCase();
+
+  if (fromDate || toDate) {
+    query.createdAt = {};
+    if (fromDate) query.createdAt.$gte = new Date(fromDate);
+    if (toDate) query.createdAt.$lte = new Date(toDate);
+  }
+
+  const skip = (page - 1) * limit;
+
+  const [placements, total] = await Promise.all([
+    Placement.find(query)
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(Number(limit)),
+    Placement.countDocuments(query),
+  ]);
+
+  res.json(
+    new ApiResponse(200, {
+      total,
+      page: Number(page),
+      totalPages: Math.ceil(total / limit),
+      placements,
+    })
+  );
 });
 
-/* ---------------------------------------------
-   GET SINGLE PLACEMENT
-----------------------------------------------*/
+/* =====================================================
+   2️⃣ GET SINGLE PLACEMENT
+===================================================== */
+
 const getPlacementById = asyncHandler(async (req, res) => {
-  const placement = await Placement.findById(req.params.id);
+  const placement = await Placement.findOne({
+    _id: req.params.id,
+    isDeleted: false,
+  });
 
   if (!placement) throw new ApiError(404, "Placement not found");
 
-  return res
-    .status(200)
-    .json(new ApiResponse(200, placement, "Placement fetched successfully"));
+  res.json(new ApiResponse(200, placement));
 });
 
-/* ---------------------------------------------
-   UPDATE PLACEMENT
-----------------------------------------------*/
-const updatePlacement = asyncHandler(async (req, res) => {
-  const { id } = req.params;
-  const { companyDesignation, rating, review } = req.body;
+/* =====================================================
+   3️⃣ SUBMIT / UPDATE REVIEW (Editable)
+===================================================== */
 
-  const placement = await Placement.findById(id);
-  if (!placement) throw new ApiError(404, "Placement not found");
+const submitOrUpdateReview = asyncHandler(async (req, res) => {
+  const { studentId, rating, review } = req.body;
 
-  placement.companyDesignation = companyDesignation ?? placement.companyDesignation;
-  placement.rating = rating ?? placement.rating;
-  placement.review = review ?? placement.review;
+  if (!rating || !review)
+    throw new ApiError(400, "Rating and review are required");
+
+  if (rating < 1 || rating > 5)
+    throw new ApiError(400, "Rating must be between 1 and 5");
+
+  const placement = await Placement.findOne({
+    studentId,
+    isDeleted: false,
+  });
+
+  if (!placement)
+    throw new ApiError(404, "Active placement not found");
+
+  const isFirstSubmission = placement.reviewSubmittedAt === null;
+
+  placement.rating = rating;
+  placement.review = review.trim();
+
+  if (isFirstSubmission) {
+    placement.reviewSubmittedAt = new Date();
+  } else {
+    placement.reviewUpdatedAt = new Date();
+  }
 
   await placement.save();
 
-  return res
-    .status(200)
-    .json(new ApiResponse(200, placement, "Placement updated successfully"));
+  res.json(new ApiResponse(200, placement, "Review saved successfully"));
 });
 
-/* ---------------------------------------------
-   SOFT DELETE
-----------------------------------------------*/
-const softDeletePlacement = asyncHandler(async (req, res) => {
-  const placement = await Placement.findById(req.params.id);
+/* =====================================================
+   4️⃣ SOFT DELETE PLACEMENT
+===================================================== */
+
+const deletePlacement = asyncHandler(async (req, res) => {
+  const placement = await Placement.findOne({
+    _id: req.params.id,
+    isDeleted: false,
+  });
 
   if (!placement) throw new ApiError(404, "Placement not found");
 
   placement.isDeleted = true;
   placement.deletedAt = new Date();
-
   await placement.save();
 
-  return res
-    .status(200)
-    .json(new ApiResponse(200, placement, "Placement soft deleted"));
+  await Student.findByIdAndUpdate(placement.studentId, {
+    isPlaced: false,
+    placedCompany: null,
+  });
+
+  res.json(new ApiResponse(200, null, "Placement deleted successfully"));
 });
 
-/* ---------------------------------------------
-   RESTORE
-----------------------------------------------*/
+/* =====================================================
+   5️⃣ RESTORE PLACEMENT
+===================================================== */
+
 const restorePlacement = asyncHandler(async (req, res) => {
-  const placement = await Placement.findById(req.params.id);
+  const placement = await Placement.findOne({
+    _id: req.params.id,
+    isDeleted: true,
+  });
 
   if (!placement) throw new ApiError(404, "Placement not found");
 
   placement.isDeleted = false;
   placement.deletedAt = null;
-
   await placement.save();
 
-  return res
-    .status(200)
-    .json(new ApiResponse(200, placement, "Placement restored successfully"));
-});
+  await Student.findByIdAndUpdate(placement.studentId, {
+    isPlaced: true,
+    placedCompany: placement.companyId,
+  });
 
-/* ---------------------------------------------
-   HARD DELETE
-----------------------------------------------*/
-const deletePlacement = asyncHandler(async (req, res) => {
-  const placement = await Placement.findById(req.params.id);
-
-  if (!placement) throw new ApiError(404, "Placement not found");
-
-  await placement.deleteOne();
-
-  return res
-    .status(200)
-    .json(new ApiResponse(200, {}, "Placement permanently deleted"));
-});
-
-/* ---------------------------------------------
-   GET ONLY REVIEWS
-----------------------------------------------*/
-const getReviewsOnly = asyncHandler(async (req, res) => {
-  const reviews = await Placement.find(
-    { isDeleted: false },
-    {
-      fullName: 1,
-      companyName: 1,
-      rating: 1,
-      review: 1,
-      department: 1,
-      studentImage: 1,
-    }
-  ).sort({ createdAt: -1 });
-
-  return res
-    .status(200)
-    .json(new ApiResponse(200, reviews, "Reviews fetched successfully"));
-});
-
-/* ---------------------------------------------
-   GET ONLY PLACEMENTS (NO REVIEW)
-----------------------------------------------*/
-const getOnlyPlacements = asyncHandler(async (req, res) => {
-  const data = await Placement.find(
-    { isDeleted: false },
-    {
-      fullName: 1,
-  
-      companyName: 1,
-      companyDesignation: 1,
-      studeImage: 1,
-      companyImage: 1,
-    }
-  ).sort({ createdAt: -1 });
-
-  return res
-    .status(200)
-    .json(new ApiResponse(200, data, "Placements fetched successfully"));
+  res.json(new ApiResponse(200, placement, "Placement restored successfully"));
 });
 
 module.exports = {
-  createPlacement,
   getPlacements,
   getPlacementById,
-  updatePlacement,
-  softDeletePlacement,
-  restorePlacement,
+  submitOrUpdateReview,
   deletePlacement,
-  getReviewsOnly,
-  getOnlyPlacements,
+  restorePlacement,
 };

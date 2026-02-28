@@ -2,25 +2,26 @@ const express = require("express");
 const router = express.Router();
 
 const {
-  createPlacement,
   getPlacements,
   getPlacementById,
-  updatePlacement,
-  softDeletePlacement,
-  restorePlacement,
+  submitOrUpdateReview,
   deletePlacement,
-  getReviewsOnly,
-  getOnlyPlacements,
+  restorePlacement,
 } = require("../controllers/placement.controller");
 
-router.post("/add", createPlacement);
-router.get("/all", getPlacements);
-router.get("/single/:id", getPlacementById);
-router.put("/update/:id", updatePlacement);
-router.patch("/soft-delete/:id", softDeletePlacement);
+// 📌 1️⃣ Get all placements (with filters + pagination)
+router.get("/", getPlacements);
+
+// 📌 2️⃣ Get single placement
+router.get("/:id", getPlacementById);
+
+// 📌 3️⃣ Submit / Update Review
+router.post("/review", submitOrUpdateReview);
+
+// 📌 4️⃣ Soft Delete Placement
+router.patch("/delete/:id", deletePlacement);
+
+// 📌 5️⃣ Restore Placement
 router.patch("/restore/:id", restorePlacement);
-router.delete("/hard-delete/:id", deletePlacement);
-router.get("/reviews", getReviewsOnly);
-router.get("/only-placements", getOnlyPlacements);
 
 module.exports = router;

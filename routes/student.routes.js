@@ -12,7 +12,7 @@ const {
   deleteStudent,
 } = require("../controllers/student.controller");
 
-const { updatePlacementInfo } = require("../controllers/studentPlacement.controller");
+const { updatePlacementInfo } = require("../controllers/student.controller");
 
 router.post("/add", multiFileUpload([{ name: "photo", maxCount: 1 }]), createStudent);
 

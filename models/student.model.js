@@ -1,10 +1,23 @@
+const mongoose = require('mongoose');
 const { Schema, model } = require("mongoose");
 
 const studentSchema = new Schema(
   {
-    studentName: { type: String, required: true, trim: true, lowercase: true, index: true },
+    studentName: {
+      type: String,
+      required: true,
+      trim: true,
+      lowercase: true,
+      index: true,
+    },
     mobile: { type: String, required: true, trim: true },
-    email: { type: String, required: true, unique: true, lowercase: true, index: true },
+    email: {
+      type: String,
+      required: true,
+      unique: true,
+      lowercase: true,
+
+    },
     adharNumber: { type: String, required: true, trim: true },
     fatherName: { type: String, required: true, lowercase: true },
     collegeName: { type: String, required: true, lowercase: true },
@@ -25,9 +38,6 @@ const studentSchema = new Schema(
     isJoined: { type: Boolean, default: false, index: true },
     batch: { type: String, trim: true, lowercase: true, index: true },
     isPaid: { type: Boolean, default: false, index: true },
-    companiesAttended: { type: [String], default: [] },
-    isPlaced: { type: Boolean, default: false, index: true },
-    placedCompany: { type: String, trim: true, lowercase: true },
 
     // 🔥 New Enum Field
     mockRating: {
@@ -35,6 +45,39 @@ const studentSchema = new Schema(
       enum: ["excellent", "good", "average", "poor", "very poor"],
       default: "average",
       lowercase: true,
+    },
+    companiesAttended: [
+      {
+        companyId: {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: "Company",
+          required: true,
+        },
+
+        interviewId: {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: "HRInterview",
+          required: true,
+        },
+
+        status: {
+          type: String,
+          enum: ["scheduled", "attended", "selected", "rejected"],
+          default: "scheduled",
+        },
+
+        interviewDate: Date,
+      },
+    ],
+
+    isPlaced: {
+      type: Boolean,
+      default: false,
+    },
+
+    placedCompany: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Company",
     },
 
     // Photo
@@ -46,7 +89,11 @@ const studentSchema = new Schema(
     isDeleted: { type: Boolean, default: false, index: true },
     deletedAt: Date,
   },
-  { timestamps: true }
+  { timestamps: true },
 );
+
+studentSchema.index({ "companiesAttended.interviewDate": 1 });
+studentSchema.index({ isPlaced: 1 });
+
 
 module.exports = model("Student", studentSchema);

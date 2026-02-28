@@ -25,7 +25,7 @@ router.get("/:id", getTrainerById);
 
 router.put(
   "/update/:id",
-  multiFileUpload([{ name: "image", maxCount: 1 }]),
+  multiFileUpload([{ name: "trainerImage", maxCount: 1 }]),
   updateTrainer
 );
 

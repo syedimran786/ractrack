@@ -6,52 +6,56 @@ const batchSchema = new Schema(
       type: String,
       required: true,
       trim: true,
-      lowercase: true, // 🔥 always lowercase
+      lowercase: true,
     },
 
-    date: { type: Date, required: true },
+    date: {
+      type: Date,
+      required: true,
+    },
 
-    time: { type: String, required: true },
+    time: {
+      type: String,
+      required: true,
+    },
 
     duration: {
       type: String,
       required: true,
       trim: true,
-      lowercase: true, // 🔥 always lowercase
+      lowercase: true,
     },
 
     mode: {
       type: String,
       required: true,
       trim: true,
-      lowercase: true, // 🔥 save as: online / offline / hybrid
+      lowercase: true,
       enum: ["online", "offline", "hybrid"],
     },
 
-    trainerName: {
-      type: String,
+    // ✅ Proper relational reference
+    trainer: {
+      type: Schema.Types.ObjectId,
+      ref: "Trainer",
       required: true,
-      trim: true,
-      lowercase: true, // 🔥 always lowercase
+      index: true,
     },
 
-    trainerEmail: {
-      type: String,
-      required: true,
-      trim: true,
-      lowercase: true,
-      match: [/^\S+@\S+\.\S+$/, "Please provide a valid email"], // basic email validation
+    isDeleted: {
+      type: Boolean,
+      default: false,
     },
 
-    isDeleted: { type: Boolean, default: false },
-    deletedAt: { type: Date, default: null },
+    deletedAt: {
+      type: Date,
+      default: null,
+    },
   },
   { timestamps: true }
 );
 
-// 🔥 Optimized index for faster duplicate lookup
-batchSchema.index({ date: 1, trainerEmail: 1, courseName: 1, time: 1 });
+// ✅ Compound index for availability check
+batchSchema.index({ date: 1, trainer: 1, time: 1 });
 
-const Batch = model("Batch", batchSchema);
-
-module.exports = Batch;
+module.exports = model("Batch", batchSchema);

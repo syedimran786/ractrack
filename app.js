@@ -5,19 +5,20 @@ const helmet = require("helmet");
 const rateLimit = require("express-rate-limit");
 const mongoSanitize = require("express-mongo-sanitize");
 const xssClean = require("xss-clean");
-
+const cookieParser = require("cookie-parser");
 const errorHandler = require("./middlewares/errorHandler");
 
 // Import module routes
 const batchRoutes = require("./routes/batch.routes");
 const trainerRoutes = require("./routes/trainer.routes");
 const placementRoutes = require("./routes/placement.routes");
+const studentRoutes = require("./routes/student.routes");
 const companyRoutes = require("./routes/company.routes");
 const enquiryRoutes = require("./routes/enquiry.routes");
 
 
 const app = express();
-
+app.use(cookieParser());
 // ------------------------------------
 // 1. CORS (Production + Development)
 // ------------------------------------
@@ -74,6 +75,7 @@ app.use(morgan("dev"));
 
 app.use("/api/batches", batchRoutes);
 app.use("/api/trainers", trainerRoutes);
+app.use("/api/students",studentRoutes);
 app.use("/api/placements", placementRoutes);
 app.use("/api/companies", companyRoutes);
 app.use("/api/enquiries", enquiryRoutes);

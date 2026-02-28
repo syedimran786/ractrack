@@ -8,7 +8,6 @@ const companySchema = new Schema(
       required: true,
       trim: true,
       lowercase: true,
-      unique: true,
     },
 
     // Cloudinary Image Fields
@@ -16,7 +15,7 @@ const companySchema = new Schema(
     companyImageId: { type: String, trim: true },
 
     // Hash used to prevent duplicate image uploading
-    companyImageHash: { type: String, trim: true, index: true },
+    companyImageHash: { type: String, trim: true },
 
     // Soft Delete
     isDeleted: { type: Boolean, default: false, index: true },

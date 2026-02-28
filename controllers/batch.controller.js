@@ -1,13 +1,13 @@
 const Batch = require("../models/batch.model");
 const Trainer = require("../models/trainer.model");
 
-const asyncHandler = require("../middlewares/asyncHandler");
+const asyncHandler = require("../utils/asyncHandler");
 const ApiResponse = require("../utils/ApiResponse");
 const ApiError = require("../utils/ApiError");
 const batchTime = require("../helpers/batchTimeHelper");
 
 // ---------------------------------------------------------
-// HELPERS
+// HELPER
 // ---------------------------------------------------------
 const normalizeDate = (date) => {
   const d = new Date(date);
@@ -19,37 +19,36 @@ const normalizeDate = (date) => {
 // CREATE BATCH
 // ---------------------------------------------------------
 const createBatch = asyncHandler(async (req, res) => {
-  const { courseName, date, time: rawTime, duration, mode, trainerEmail } = req.body;
+  const { courseName, date, time: rawTime, duration, mode, trainerEmail } =
+    req.body;
 
   if (!rawTime) throw new ApiError(400, "Time is required");
   if (!trainerEmail) throw new ApiError(400, "Trainer email is required");
 
   const time = batchTime(rawTime);
   const normalizedDate = normalizeDate(date);
-  const normalizedEmail = trainerEmail.toLowerCase().trim();
+  const normalizedEmail = trainerEmail.trim().toLowerCase();
 
-  // 1️⃣ Validate trainer
+  // 1️⃣ Find trainer
   const trainer = await Trainer.findOne({
     email: normalizedEmail,
     isDeleted: false,
-  }).select("trainerName email");
+  }).select("_id trainerName email");
 
-  if (!trainer) {
-    throw new ApiError(404, `Trainer with email "${normalizedEmail}" not found`);
-  }
+  if (!trainer) throw new ApiError(404, "Trainer not found");
 
-  // 2️⃣ Trainer availability check
-  const existingBatch = await Batch.findOne({
-    trainerEmail: normalizedEmail,
+  // 2️⃣ Conflict check
+  const conflict = await Batch.findOne({
+    trainer: trainer._id,
     date: normalizedDate,
     time,
     isDeleted: false,
-  }).select("courseName");
+  });
 
-  if (existingBatch) {
+  if (conflict) {
     throw new ApiError(
       400,
-      `Trainer "${trainer.trainerName}" is already assigned to course "${existingBatch.courseName}" at this date & time`
+      `Trainer "${trainer.trainerName}" already has a batch at this time or date`
     );
   }
 
@@ -60,8 +59,7 @@ const createBatch = asyncHandler(async (req, res) => {
     duration,
     mode,
     time,
-    trainerName: trainer.trainerName,
-    trainerEmail: trainer.email,
+    trainer: trainer._id,
   });
 
   return res
@@ -70,10 +68,10 @@ const createBatch = asyncHandler(async (req, res) => {
 });
 
 // ---------------------------------------------------------
-// GET ALL BATCHES (pagination + search)
+// GET ALL BATCHES (Pagination + Search)
 // ---------------------------------------------------------
 const getBatches = asyncHandler(async (req, res) => {
-  const { page = 1, limit = 4, search = "" } = req.query;
+  const { page = 1, limit = 5, search = "" } = req.query;
 
   const pageNum = Number(page);
   const limitNum = Number(limit);
@@ -81,23 +79,29 @@ const getBatches = asyncHandler(async (req, res) => {
   const query = { isDeleted: false };
 
   if (search) {
+    const trainers = await Trainer.find({
+      trainerName: { $regex: search, $options: "i" },
+      isDeleted: false,
+    }).select("_id");
+
     query.$or = [
       { courseName: { $regex: search, $options: "i" } },
-      { trainerName: { $regex: search, $options: "i" } },
-      { trainerEmail: { $regex: search, $options: "i" } },
       { mode: { $regex: search, $options: "i" } },
+      { trainer: { $in: trainers.map((t) => t._id) } },
     ];
   }
 
   const batches = await Batch.find(query)
+    .populate("trainer", "trainerName email")
     .skip((pageNum - 1) * limitNum)
     .limit(limitNum)
-    .sort({ createdAt: -1 });
+    .sort({ createdAt: -1 })
+    .lean();
 
   const total = await Batch.countDocuments(query);
 
   return res.json(
-    new ApiResponse(200, { batches, total }, "Batches fetched successfully")
+    new ApiResponse(200, {total, batches }, "Batches fetched successfully")
   );
 });
 
@@ -108,11 +112,15 @@ const getBatchById = asyncHandler(async (req, res) => {
   const batch = await Batch.findOne({
     _id: req.params.id,
     isDeleted: false,
-  });
+  })
+    .populate("trainer", "trainerName email")
+    .lean();
 
   if (!batch) throw new ApiError(404, "Batch not found");
 
-  return res.json(new ApiResponse(200, batch, "Batch fetched successfully"));
+  return res.json(
+    new ApiResponse(200, batch, "Batch fetched successfully")
+  );
 });
 
 // ---------------------------------------------------------
@@ -120,38 +128,37 @@ const getBatchById = asyncHandler(async (req, res) => {
 // ---------------------------------------------------------
 const updateBatch = asyncHandler(async (req, res) => {
   const { id } = req.params;
-  const { courseName, date, time: rawTime, duration, mode, trainerEmail } = req.body;
+  const { courseName, date, time: rawTime, duration, mode, trainerEmail } =
+    req.body;
 
   if (!rawTime) throw new ApiError(400, "Time is required");
   if (!trainerEmail) throw new ApiError(400, "Trainer email is required");
 
   const time = batchTime(rawTime);
   const normalizedDate = normalizeDate(date);
-  const normalizedEmail = trainerEmail.toLowerCase().trim();
+  const normalizedEmail = trainerEmail.trim().toLowerCase();
 
-  // 1️⃣ Validate trainer
+  // 1️⃣ Find trainer
   const trainer = await Trainer.findOne({
     email: normalizedEmail,
     isDeleted: false,
-  }).select("trainerName email");
+  }).select("_id trainerName email");
 
-  if (!trainer) {
-    throw new ApiError(404, `Trainer with email "${normalizedEmail}" not found`);
-  }
+  if (!trainer) throw new ApiError(404, "Trainer not found");
 
   // 2️⃣ Conflict check
-  const existingBatch = await Batch.findOne({
+  const conflict = await Batch.findOne({
     _id: { $ne: id },
-    trainerEmail: normalizedEmail,
+    trainer: trainer._id,
     date: normalizedDate,
     time,
     isDeleted: false,
-  }).select("courseName");
+  });
 
-  if (existingBatch) {
+  if (conflict) {
     throw new ApiError(
       400,
-      `Trainer "${trainer.trainerName}" is already assigned to course "${existingBatch.courseName}" at this date & time`
+      `Trainer "${trainer.trainerName}" already has a batch at this time`
     );
   }
 
@@ -159,20 +166,21 @@ const updateBatch = asyncHandler(async (req, res) => {
   const batch = await Batch.findOneAndUpdate(
     { _id: id, isDeleted: false },
     {
-      courseName: courseName.toLowerCase().trim(),
+      courseName,
       date: normalizedDate,
-      duration: duration.toLowerCase().trim(),
-      mode: mode.toLowerCase().trim(),
-      trainerName: trainer.trainerName.toLowerCase(),
-      trainerEmail: trainer.email.toLowerCase(),
+      duration,
+      mode,
       time,
+      trainer: trainer._id,
     },
     { new: true, runValidators: true }
-  );
+  ).populate("trainer", "trainerName email");
 
   if (!batch) throw new ApiError(404, "Batch not found");
 
-  return res.json(new ApiResponse(200, batch, "Batch updated successfully"));
+  return res.json(
+    new ApiResponse(200, batch, "Batch updated successfully")
+  );
 });
 
 // ---------------------------------------------------------
@@ -185,9 +193,11 @@ const softDeleteBatch = asyncHandler(async (req, res) => {
     { new: true }
   );
 
-  if (!batch) throw new ApiError(404, "Batch not found or already deleted");
+  if (!batch) throw new ApiError(404, "Batch not found");
 
-  return res.json(new ApiResponse(200, batch, "Batch soft deleted"));
+  return res.json(
+    new ApiResponse(200, batch, "Batch soft deleted successfully")
+  );
 });
 
 // ---------------------------------------------------------
@@ -202,7 +212,9 @@ const restoreBatch = asyncHandler(async (req, res) => {
 
   if (!batch) throw new ApiError(404, "Deleted batch not found");
 
-  return res.json(new ApiResponse(200, batch, "Batch restored successfully"));
+  return res.json(
+    new ApiResponse(200, batch, "Batch restored successfully")
+  );
 });
 
 // ---------------------------------------------------------
@@ -213,12 +225,11 @@ const hardDeleteBatch = asyncHandler(async (req, res) => {
 
   if (!batch) throw new ApiError(404, "Batch not found");
 
-  return res.json(new ApiResponse(200, null, "Batch permanently deleted"));
+  return res.json(
+    new ApiResponse(200, null, "Batch permanently deleted")
+  );
 });
 
-// ---------------------------------------------------------
-// EXPORTS
-// ---------------------------------------------------------
 module.exports = {
   createBatch,
   getBatches,

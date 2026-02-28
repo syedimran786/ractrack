@@ -15,9 +15,7 @@ const trainerSchema = new Schema(
       required: true,
       trim: true,
       lowercase: true,
-      unique: true,
       match: [/^\S+@\S+\.\S+$/, "Please provide a valid email"],
-      index: true,
     },
 
     // Cloudinary fields
@@ -25,7 +23,7 @@ const trainerSchema = new Schema(
     imageId: { type: String, trim: true },
 
     // Hash to avoid duplicate trainer image uploads
-    imageHash: { type: String, trim: true, index: true },
+    imageHash: { type: String, trim: true },
 
     designation: { type: String, trim: true, lowercase: true },
     linkedin: { type: String, trim: true },

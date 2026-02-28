@@ -1,5 +1,5 @@
 const Company = require("../models/company.model");
-const asyncHandler = require("../middlewares/asyncHandler");
+const asyncHandler = require("../utils/asyncHandler");
 const ApiError = require("../utils/ApiError");
 const ApiResponse = require("../utils/ApiResponse");
 const { optimizeImage } = require("../utils/imageProcessor");

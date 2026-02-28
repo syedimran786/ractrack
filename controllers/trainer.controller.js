@@ -12,27 +12,23 @@ const {
    CREATE TRAINER
 ====================================================== */
 const createTrainer = asyncHandler(async (req, res) => {
+
   const { trainerName, email, designation, linkedin, facebook, instagram } =
     req.body;
 
-  // 1️⃣ Check name duplicate
+  // 1️⃣ Check email duplicate
   const existingTrainer = await Trainer.findOne({ email: email.toLowerCase() });
   if (existingTrainer) {
     throw new ApiError(400, "Trainer with this email already exists");
   }
-
   let imageUrl = null;
   let imageId = null;
   let imageHash = null;
 
   // 2️⃣ Process and Upload Image
-  if (req.files?.image?.[0]) {
-    const file = req.files.image[0];
+  if (req.files?.trainerImage?.[0]) {
+    const file = req.files.trainerImage[0]; 
 
-    // Validate MIME type
-    if (!file.mimetype.startsWith("image/")) {
-      throw new ApiError(400, `Invalid MIME type: ${file.mimetype}`);
-    }
 
     // Create hash for duplicate detection
     const { processedBuffer, hash } = await processImageAndGenerateHash(
@@ -121,13 +117,10 @@ const updateTrainer = asyncHandler(async (req, res) => {
   }
 
   // 2️⃣ Image update handling
-  if (req.files?.image?.[0]) {
-    const file = req.files.image[0];
+  if (req.files?.trainerImage?.[0]) {
+    const file = req.files.trainerImage[0];
 
-    if (!file.mimetype.startsWith("image/")) {
-      throw new ApiError(400, `Invalid MIME type: ${file.mimetype}`);
-    }
-
+  
     const { processedBuffer, hash } = await processImageAndGenerateHash(
       file.buffer
     );

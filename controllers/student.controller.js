@@ -1,5 +1,6 @@
 const Student = require("../models/student.model");
-const asyncHandler = require("../middlewares/asyncHandler");
+const mongoose = require("mongoose");
+const asyncHandler = require("../utils/asyncHandler");
 const ApiError = require("../utils/ApiError");
 const ApiResponse = require("../utils/ApiResponse");
 const { optimizeImage } = require("../utils/imageProcessor");
@@ -190,25 +191,149 @@ const deleteStudent = asyncHandler(async (req, res) => {
 /* ======================================================
    UPDATE PLACEMENT INFO
 ====================================================== */
+
+
 const updatePlacementInfo = asyncHandler(async (req, res) => {
-  const { id } = req.params;
-  const { companiesAttended, isPlaced, placedCompany, mockRating } = req.body;
+  const session = await mongoose.startSession();
+  session.startTransaction();
 
-  const student = await Student.findById(id);
-  if (!student) throw new ApiError(404, "Student not found");
+  try {
+    const { id } = req.params;
+    const { companiesAttended, isPlaced, placedCompany, mockRating } =
+      req.body;
 
-  // Update fields only if provided
-  if (companiesAttended !== undefined) student.companiesAttended = companiesAttended;
-  if (typeof isPlaced === "boolean") student.isPlaced = isPlaced;
-  if (placedCompany !== undefined) student.placedCompany = placedCompany;
-  if (mockRating !== undefined) student.mockRating = mockRating.toLowerCase();
+    const student = await Student.findOne(
+      { _id: id, isDeleted: false },
+      null,
+      { session }
+    );
 
-  await student.save();
+    if (!student) throw new ApiError(404, "Student not found");
 
-  res.json(new ApiResponse(200, student, "Placement details updated successfully"));
+    /* ===============================
+       Update companiesAttended
+    =============================== */
+
+    if (Array.isArray(companiesAttended)) {
+      student.companiesAttended = companiesAttended;
+    }
+
+    /* ===============================
+       Update mockRating (enum safe)
+    =============================== */
+
+    if (mockRating !== undefined) {
+      const allowedRatings = [
+        "excellent",
+        "good",
+        "average",
+        "poor",
+        "very poor",
+      ];
+
+      if (!allowedRatings.includes(mockRating.toLowerCase())) {
+        throw new ApiError(400, "Invalid mock rating value");
+      }
+
+      student.mockRating = mockRating.toLowerCase();
+    }
+
+    /* ===============================
+       Placement Handling
+    =============================== */
+
+    if (typeof isPlaced === "boolean") {
+      // 🔥 If marking as placed
+      if (isPlaced) {
+        if (!placedCompany)
+          throw new ApiError(
+            400,
+            "placedCompany is required when marking student as placed"
+          );
+
+        if (student.isPlaced)
+          throw new ApiError(400, "Student already placed");
+
+        const company = await Company.findOne(
+          { _id: placedCompany, isDeleted: false },
+          null,
+          { session }
+        );
+
+        if (!company)
+          throw new ApiError(404, "Placed company not found");
+
+        // 🚫 Check existing placement (extra safety)
+        const existingPlacement = await Placement.findOne(
+          { studentId: student._id, isDeleted: false },
+          null,
+          { session }
+        );
+
+        if (existingPlacement)
+          throw new ApiError(
+            400,
+            "Student already has an active placement"
+          );
+
+        // ✅ Create Placement Snapshot
+        await Placement.create(
+          [
+            {
+              studentId: student._id,
+              companyId: company._id,
+
+              fullName: student.studentName,
+              ugStream: student.ugStream,
+              studentEmail: student.email,
+              studentMobile: student.mobile,
+              studentImage: student.photoUrl,
+
+              companyName: company.companyName,
+              companyImageUrl: company.companyImageUrl,
+
+              companyDesignation: req.body.companyDesignation,
+              rating: req.body.rating,
+              review: req.body.review,
+            },
+          ],
+          { session }
+        );
+
+        student.isPlaced = true;
+        student.placedCompany = company._id;
+      }
+
+      // 🔥 If unmarking placement
+      else {
+        await Placement.findOneAndUpdate(
+          { studentId: student._id, isDeleted: false },
+          {
+            isDeleted: true,
+            deletedAt: new Date(),
+          },
+          { session }
+        );
+
+        student.isPlaced = false;
+        student.placedCompany = null;
+      }
+    }
+
+    await student.save({ session });
+
+    await session.commitTransaction();
+    session.endSession();
+
+    return res.json(
+      new ApiResponse(200, student, "Placement details updated successfully")
+    );
+  } catch (error) {
+    await session.abortTransaction();
+    session.endSession();
+    throw error;
+  }
 });
-
-
 
 
 /* ======================================================
