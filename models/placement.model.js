@@ -37,6 +37,7 @@ const placementSchema = new Schema(
       required: true,
       trim: true,
       lowercase: true,
+      index: true,
     },
 
     studentEmail: {
@@ -44,6 +45,7 @@ const placementSchema = new Schema(
       required: true,
       trim: true,
       lowercase: true,
+      index: true,
     },
 
     studentMobile: {
@@ -66,6 +68,7 @@ const placementSchema = new Schema(
       required: true,
       trim: true,
       lowercase: true,
+      index: true,
     },
 
     companyImageUrl: {
@@ -92,6 +95,7 @@ const placementSchema = new Schema(
       min: 1,
       max: 5,
       default: null,
+      index: true,
     },
 
     review: {
@@ -132,7 +136,7 @@ const placementSchema = new Schema(
    INDEXES
 =============================== */
 
-// 🔥 One active placement per student
+// Only ONE active placement per student
 placementSchema.index(
   { studentId: 1 },
   { unique: true, partialFilterExpression: { isDeleted: false } }
@@ -142,9 +146,24 @@ placementSchema.index(
 placementSchema.index({
   fullName: "text",
   companyName: "text",
+  companyDesignation: "text",
 });
 
-// Dashboard performance
+// Dashboard sorting
 placementSchema.index({ isDeleted: 1, createdAt: -1 });
+
+// Main filter index
+placementSchema.index({
+  companyId: 1,
+  ugStream: 1,
+  createdAt: -1,
+});
+
+// ⭐ Review status optimization
+placementSchema.index({
+  rating: 1,
+  isDeleted: 1,
+  createdAt: -1,
+});
 
 module.exports = model("Placement", placementSchema);

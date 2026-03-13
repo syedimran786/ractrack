@@ -23,7 +23,7 @@ router.put("/update/:id", multiFileUpload([{ name: "photo", maxCount: 1 }]), upd
 
 router.patch("/soft-delete/:id", softDeleteStudent);
 router.patch("/restore/:id", restoreStudent);
-router.delete("/:id", deleteStudent);
+router.delete("/hard-delete/:id", deleteStudent);
 
 /* 🔥 Placement / Company update */
 router.patch("/placement/:id", updatePlacementInfo);

@@ -1,3 +1,5 @@
+const mongoose = require("mongoose");
+
 const asyncHandler = require("express-async-handler");
 const Placement = require("../models/placement.model");
 const Student = require("../models/student.model");
@@ -8,8 +10,10 @@ const ApiResponse = require("../utils/ApiResponse");
    1️⃣ GET ALL PLACEMENTS
 ===================================================== */
 
+
+
 const getPlacements = asyncHandler(async (req, res) => {
-  const {
+  let {
     page = 1,
     limit = 10,
     search,
@@ -17,43 +21,113 @@ const getPlacements = asyncHandler(async (req, res) => {
     ugStream,
     fromDate,
     toDate,
+    reviewStatus,
   } = req.query;
+
+  /* ===============================
+     PAGINATION
+  =============================== */
+
+  page = parseInt(page);
+  limit = parseInt(limit);
+
+  if (isNaN(page) || page < 1) page = 1;
+  if (isNaN(limit) || limit < 1 || limit > 100) limit = 10;
+
+  const skip = (page - 1) * limit;
+
+  /* ===============================
+     BASE QUERY
+  =============================== */
 
   const query = { isDeleted: false };
 
+  /* ===============================
+     SEARCH
+  =============================== */
+
   if (search) {
-    query.$text = { $search: search };
+    query.$text = { $search: search.trim() };
   }
 
-  if (companyId) query.companyId = companyId;
+  /* ===============================
+     COMPANY FILTER
+  =============================== */
 
-  if (ugStream) query.ugStream = ugStream.toLowerCase();
+  if (companyId) {
+    if (!mongoose.Types.ObjectId.isValid(companyId)) {
+      throw new ApiError(400, "Invalid company id");
+    }
+
+    query.companyId = new mongoose.Types.ObjectId(companyId);
+  }
+
+  /* ===============================
+     STREAM FILTER
+  =============================== */
+
+  if (ugStream) {
+    query.ugStream = ugStream.toLowerCase().trim();
+  }
+
+  /* ===============================
+     DATE RANGE FILTER
+  =============================== */
 
   if (fromDate || toDate) {
     query.createdAt = {};
+
     if (fromDate) query.createdAt.$gte = new Date(fromDate);
     if (toDate) query.createdAt.$lte = new Date(toDate);
   }
 
-  const skip = (page - 1) * limit;
+  /* ===============================
+     REVIEW STATUS FILTER
+  =============================== */
+
+  if (reviewStatus === "submitted") {
+    query.companyDesignation = { $exists: true, $ne: "" };
+    query.rating = { $ne: null };
+    query.review = { $exists: true, $ne: "" };
+  }
+
+  if (reviewStatus === "pending") {
+    query.$or = [
+      { rating: null },
+      { review: null },
+      { review: "" }
+    ];
+  }
+
+  /* ===============================
+     DATABASE QUERY
+  =============================== */
 
   const [placements, total] = await Promise.all([
     Placement.find(query)
       .sort({ createdAt: -1 })
       .skip(skip)
-      .limit(Number(limit)),
+      .limit(limit)
+      .lean(),
+
     Placement.countDocuments(query),
   ]);
 
-  res.json(
+  const totalPages = Math.ceil(total / limit);
+
+  return res.json(
     new ApiResponse(200, {
-      total,
-      page: Number(page),
-      totalPages: Math.ceil(total / limit),
+      totalRecords: total,
+      currentPage: page,
+      totalPages,
+      pageSize: limit,
       placements,
     })
   );
 });
+
+
+
 
 /* =====================================================
    2️⃣ GET SINGLE PLACEMENT

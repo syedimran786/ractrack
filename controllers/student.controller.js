@@ -1,4 +1,6 @@
 const Student = require("../models/student.model");
+const Company = require("../models/company.model");
+const Placement = require("../models/placement.model");
 const mongoose = require("mongoose");
 const asyncHandler = require("../utils/asyncHandler");
 const ApiError = require("../utils/ApiError");
@@ -150,7 +152,7 @@ const updateStudent = asyncHandler(async (req, res) => {
 
   if (req.body.email) {
     const exists = await Student.findOne({ email: req.body.email.toLowerCase(), _id: { $ne: id } });
-    if (exists) throw new ApiError(409, "Another student already uses this email");
+    if (exists) throw new ApiError(409, "Student Email Already Exists");
     student.email = req.body.email.toLowerCase();
   }
 
@@ -238,7 +240,7 @@ const updatePlacementInfo = asyncHandler(async (req, res) => {
 
       const {
         companiesAttended,
-        isPlaced,
+        isPlaced, 
         placedCompany,
         mockRating,
         companyDesignation,
