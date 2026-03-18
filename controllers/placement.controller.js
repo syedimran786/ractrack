@@ -9,117 +9,180 @@ const ApiResponse = require("../utils/ApiResponse");
 /* =====================================================
    1️⃣ GET ALL PLACEMENTS
 ===================================================== */
-
-
-
 const getPlacements = asyncHandler(async (req, res) => {
   let {
     page = 1,
     limit = 10,
+    reviewStatus,
     search,
+    sortBy = "createdAt",
+    order = "desc",
+    fields,
     companyId,
     ugStream,
-    fromDate,
-    toDate,
-    reviewStatus,
+    startDate,
+    endDate,
   } = req.query;
 
-  /* ===============================
-     PAGINATION
-  =============================== */
-
-  page = parseInt(page);
-  limit = parseInt(limit);
-
-  if (isNaN(page) || page < 1) page = 1;
-  if (isNaN(limit) || limit < 1 || limit > 100) limit = 10;
+  page = parseInt(page) || 1;
+  limit = parseInt(limit) || 10;
 
   const skip = (page - 1) * limit;
 
   /* ===============================
-     BASE QUERY
+     MATCH (FILTERING)
   =============================== */
 
-  const query = { isDeleted: false };
+  const matchStage = {
+    isDeleted: false,
+    $and: [],
+  };
 
-  /* ===============================
-     SEARCH
-  =============================== */
-
-  if (search) {
-    query.$text = { $search: search.trim() };
+  // 👉 Review status
+  if (!reviewStatus || reviewStatus === "pending") {
+    matchStage.$and.push({
+      $or: [
+        { companyDesignation: null },
+        { companyDesignation: "" },
+        { rating: null },
+        { review: null },
+        { review: "" },
+      ],
+    });
   }
-
-  /* ===============================
-     COMPANY FILTER
-  =============================== */
-
-  if (companyId) {
-    if (!mongoose.Types.ObjectId.isValid(companyId)) {
-      throw new ApiError(400, "Invalid company id");
-    }
-
-    query.companyId = new mongoose.Types.ObjectId(companyId);
-  }
-
-  /* ===============================
-     STREAM FILTER
-  =============================== */
-
-  if (ugStream) {
-    query.ugStream = ugStream.toLowerCase().trim();
-  }
-
-  /* ===============================
-     DATE RANGE FILTER
-  =============================== */
-
-  if (fromDate || toDate) {
-    query.createdAt = {};
-
-    if (fromDate) query.createdAt.$gte = new Date(fromDate);
-    if (toDate) query.createdAt.$lte = new Date(toDate);
-  }
-
-  /* ===============================
-     REVIEW STATUS FILTER
-  =============================== */
 
   if (reviewStatus === "submitted") {
-    query.companyDesignation = { $exists: true, $ne: "" };
-    query.rating = { $ne: null };
-    query.review = { $exists: true, $ne: "" };
+    matchStage.$and.push({
+      companyDesignation: { $nin: [null, ""] },
+      rating: { $ne: null },
+      review: { $nin: [null, ""] },
+    });
   }
 
-  if (reviewStatus === "pending") {
-    query.$or = [
-      { rating: null },
-      { review: null },
-      { review: "" }
-    ];
+  // 👉 Company filter
+  if (companyId) {
+    matchStage.$and.push({
+      companyId: new mongoose.Types.ObjectId(companyId),
+    });
+  }
+
+  // 👉 Stream filter
+  if (ugStream) {
+    matchStage.$and.push({
+      ugStream: ugStream.toLowerCase(),
+    });
+  }
+
+  // 👉 Date range
+  if (startDate || endDate) {
+    const dateFilter = {};
+    if (startDate) dateFilter.$gte = new Date(startDate);
+    if (endDate) dateFilter.$lte = new Date(endDate);
+
+    matchStage.$and.push({ createdAt: dateFilter });
+  }
+
+  // 👉 Search (TEXT INDEX)
+  if (search) {
+    matchStage.$text = { $search: search };
+  }
+
+  if (matchStage.$and.length === 0) {
+    delete matchStage.$and;
   }
 
   /* ===============================
-     DATABASE QUERY
+     SORTING
   =============================== */
 
-  const [placements, total] = await Promise.all([
-    Placement.find(query)
-      .sort({ createdAt: -1 })
-      .skip(skip)
-      .limit(limit)
-      .lean(),
+  const sortOrder = order === "asc" ? 1 : -1;
 
-    Placement.countDocuments(query),
-  ]);
+  const sortStage = {};
+  sortStage[sortBy] = sortOrder;
 
-  const totalPages = Math.ceil(total / limit);
+  // If using text search → add score
+  if (search) {
+    sortStage.score = { $meta: "textScore" };
+  }
+
+  /* ===============================
+     PROJECTION (FIELDS)
+  =============================== */
+
+  const allowedFields = [
+    "fullName",
+    "ugStream",
+    "studentImage",
+    "companyName",
+    "companyImageUrl",
+    "companyDesignation",
+    "rating",
+    "review",
+    "reviewSubmittedAt",
+    "createdAt",
+  ];
+
+  let projection = {};
+
+  if (fields) {
+    fields.split(",").forEach((field) => {
+      const f = field.trim();
+      if (allowedFields.includes(f)) {
+        projection[f] = 1;
+      }
+    });
+
+    projection._id = 1;
+  } else {
+    // Default fields
+    projection = {
+      fullName: 1,
+      ugStream: 1,
+      studentImage: 1,
+      companyName: 1,
+      companyImageUrl: 1,
+      companyDesignation: 1,
+      rating: 1,
+      review: 1,
+      reviewSubmittedAt: 1,
+      createdAt: 1,
+    };
+  }
+
+  /* ===============================
+     PIPELINE
+  =============================== */
+
+  const pipeline = [
+    { $match: matchStage },
+
+    // 👉 Text score support
+    ...(search ? [{ $addFields: { score: { $meta: "textScore" } } }] : []),
+
+    { $sort: sortStage },
+
+    {
+      $facet: {
+        data: [
+          { $skip: skip },
+          { $limit: limit },
+          { $project: projection },
+        ],
+        totalCount: [{ $count: "count" }],
+      },
+    },
+  ];
+
+  const result = await Placement.aggregate(pipeline);
+
+  const placements = result[0].data;
+  const total = result[0].totalCount[0]?.count || 0;
 
   return res.json(
     new ApiResponse(200, {
       totalRecords: total,
       currentPage: page,
-      totalPages,
+      totalPages: Math.ceil(total / limit),
       pageSize: limit,
       placements,
     })

@@ -127,7 +127,29 @@ const getReceiptByNumber = asyncHandler(async (req, res) => {
 
   res.json(new ApiResponse(200, receipt));
 });
+const updatePaymentByAccounts = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const { isPaid } = req.body;
 
+  if (typeof isPaid !== "boolean") {
+    throw new ApiError(400, "isPaid must be true or false");
+  }
+
+  const student = await Student.findOne({
+    _id: id,
+    isDeleted: false,
+  });
+
+  if (!student) throw new ApiError(404, "Student not found");
+
+  student.isPaid = isPaid;
+
+  await student.save();
+
+  return res.json(
+    new ApiResponse(200, null, "Payment status updated successfully")
+  );
+});
 module.exports = {
   createPayment,
   getPaymentsByStudent,

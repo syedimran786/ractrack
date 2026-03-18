@@ -26,6 +26,6 @@ router.patch("/restore/:id", restoreStudent);
 router.delete("/hard-delete/:id", deleteStudent);
 
 /* 🔥 Placement / Company update */
-router.patch("/placement/:id", updatePlacementInfo);
+// router.patch("/placement/:id", updatePlacementInfo);
 
 module.exports = router;

@@ -11,14 +11,12 @@ const placementSchema = new Schema(
       type: Schema.Types.ObjectId,
       ref: "Student",
       required: true,
-      index: true,
     },
 
     companyId: {
       type: Schema.Types.ObjectId,
       ref: "Company",
       required: true,
-      index: true,
     },
 
     /* ===============================
@@ -37,7 +35,6 @@ const placementSchema = new Schema(
       required: true,
       trim: true,
       lowercase: true,
-      index: true,
     },
 
     studentEmail: {
@@ -45,7 +42,6 @@ const placementSchema = new Schema(
       required: true,
       trim: true,
       lowercase: true,
-      index: true,
     },
 
     studentMobile: {
@@ -68,7 +64,6 @@ const placementSchema = new Schema(
       required: true,
       trim: true,
       lowercase: true,
-      index: true,
     },
 
     companyImageUrl: {
@@ -95,7 +90,6 @@ const placementSchema = new Schema(
       min: 1,
       max: 5,
       default: null,
-      index: true,
     },
 
     review: {
@@ -121,7 +115,6 @@ const placementSchema = new Schema(
     isDeleted: {
       type: Boolean,
       default: false,
-      index: true,
     },
 
     deletedAt: {
@@ -133,36 +126,38 @@ const placementSchema = new Schema(
 );
 
 /* ===============================
-   INDEXES
+   INDEXES (OPTIMIZED)
 =============================== */
 
-// Only ONE active placement per student
+// ✅ Only ONE active placement per student
 placementSchema.index(
   { studentId: 1 },
   { unique: true, partialFilterExpression: { isDeleted: false } }
 );
 
-// Text search
+// ✅ Text search (for search feature)
 placementSchema.index({
   fullName: "text",
   companyName: "text",
   companyDesignation: "text",
 });
 
-// Dashboard sorting
+// ✅ Base filter + sorting (VERY IMPORTANT)
 placementSchema.index({ isDeleted: 1, createdAt: -1 });
 
-// Main filter index
+// ✅ Main filtering (company + stream + date)
 placementSchema.index({
+  isDeleted: 1,
   companyId: 1,
   ugStream: 1,
   createdAt: -1,
 });
 
-// ⭐ Review status optimization
+// ✅ 🔥 Review status queries (MOST IMPORTANT)
 placementSchema.index({
-  rating: 1,
   isDeleted: 1,
+  companyDesignation: 1,
+  rating: 1,
   createdAt: -1,
 });
 

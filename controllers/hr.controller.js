@@ -1,217 +1,290 @@
-const asyncHandler = require("express-async-handler");
-const mongoose = require("mongoose");
 const Student = require("../models/student.model");
 const Company = require("../models/company.model");
-const HRInterview = require("../models/hrInterview.model");
+const Placement = require("../models/placement.model");
+const mongoose = require("mongoose");
+const asyncHandler = require("../utils/asyncHandler");
 const ApiError = require("../utils/ApiError");
+const ApiResponse = require("../utils/ApiResponse");
 
-/* =========================
-   GET ELIGIBLE STUDENTS
-========================= */
-const getEligibleStudents = asyncHandler(async (req, res) => {
-  const students = await Student.find({
-    isActive: true,
-    isPlaced: false,
-  }).select("studentName email mobile companiesAttended");
+/* ======================================================
+   1️⃣ ADD COMPANY (SCHEDULE INTERVIEW)
+====================================================== */
+const addCompanyToStudent = asyncHandler(async (req, res) => {
+  const { studentId } = req.params;
+  const { companyId, interviewId, interviewDate } = req.body;
 
-  res.status(200).json({
-    success: true,
-    count: students.length,
-    data: students,
-  });
-});
-
-/* =========================
-   ASSIGN COMPANY TO STUDENT
-========================= */
-const assignCompanyToStudent = asyncHandler(async (req, res) => {
-  const { studentId, companyId, interviewDate } = req.body;
-
-  if (!studentId || !companyId || !interviewDate) {
-    throw new ApiError(400, "All fields are required");
+  if (!companyId || !interviewId) {
+    throw new ApiError(400, "companyId and interviewId are required");
   }
 
   const student = await Student.findById(studentId);
   if (!student) throw new ApiError(404, "Student not found");
 
-  if (student.isPlaced) {
-    throw new ApiError(400, "Student already placed");
-  }
-
   const company = await Company.findById(companyId);
   if (!company) throw new ApiError(404, "Company not found");
 
-  const alreadyAssigned = student.companiesAttended.some(
-    (c) => c.companyId.toString() === companyId
+  const exists = student.companiesAdded.find(
+    (c) =>
+      c.companyId.toString() === companyId &&
+      c.interviewId.toString() === interviewId
   );
 
-  if (alreadyAssigned) {
-    throw new ApiError(400, "Company already assigned to this student");
-  }
+  if (exists) throw new ApiError(409, "Company already scheduled");
 
-  const interview = await HRInterview.create({
-    hrId: req.user._id,
-    studentId,
+  student.companiesAdded.push({
     companyId,
-    interviewDate,
-    status: "scheduled",
-  });
-
-  student.companiesAttended.push({
-    companyId,
-    interviewId: interview._id,
+    interviewId,
     interviewDate,
     status: "scheduled",
   });
 
   await student.save();
 
-  res.status(201).json({
-    success: true,
-    message: "Company assigned successfully",
-    interview,
-  });
+  res.json(new ApiResponse(200, student, "Interview scheduled"));
 });
 
-/* =========================
-   UPDATE INTERVIEW STATUS
-========================= */
-const updateInterviewStatus = asyncHandler(async (req, res) => {
-  const { interviewId } = req.params;
-  const { status, feedback } = req.body;
+/* ======================================================
+   2️⃣ MARK AS ATTENDED
+====================================================== */
+const markAsAttended = asyncHandler(async (req, res) => {
+  const { studentId } = req.params;
+  const { companyId, interviewId } = req.body;
 
-  if (!status) {
-    throw new ApiError(400, "Status is required");
-  }
-
-  const interview = await HRInterview.findById(interviewId);
-  if (!interview) throw new ApiError(404, "Interview not found");
-
-  interview.status = status;
-  if (feedback) interview.feedback = feedback;
-  await interview.save();
-
-  const student = await Student.findById(interview.studentId);
+  const student = await Student.findById(studentId);
   if (!student) throw new ApiError(404, "Student not found");
 
-  const attendedCompany = student.companiesAttended.find(
-    (c) => c.interviewId.toString() === interviewId
+  const index = student.companiesAdded.findIndex(
+    (c) =>
+      c.companyId.toString() === companyId &&
+      c.interviewId.toString() === interviewId
   );
 
-  if (attendedCompany) {
-    attendedCompany.status = status;
+  if (index === -1) {
+    throw new ApiError(404, "Interview not found in scheduled list");
   }
 
+  const interview = student.companiesAdded[index];
+
+  // remove from scheduled
+  student.companiesAdded.splice(index, 1);
+
+  // add to attended (clean object)
+  student.companiesAttended.push({
+    companyId: interview.companyId,
+    interviewId: interview.interviewId,
+    interviewDate: interview.interviewDate,
+    status: "attended",
+  });
+
+  await student.save();
+
+  res.json(new ApiResponse(200, student, "Marked as attended"));
+});
+
+/* ======================================================
+   3️⃣ UPDATE INTERVIEW STATUS (SELECTED / REJECTED)
+====================================================== */
+const updateInterviewStatus = asyncHandler(async (req, res) => {
+  const { studentId } = req.params;
+  const { companyId, interviewId, status } = req.body;
+
+  if (!["selected", "rejected"].includes(status)) {
+    throw new ApiError(400, "Invalid status");
+  }
+
+  const student = await Student.findById(studentId);
+  if (!student) throw new ApiError(404, "Student not found");
+
+  const interview = student.companiesAttended.find(
+    (c) =>
+      c.companyId.toString() === companyId &&
+      c.interviewId.toString() === interviewId
+  );
+
+  if (!interview) throw new ApiError(404, "Interview not found");
+
+  // prevent multiple placements
+  if (status === "selected" && student.isPlaced) {
+    throw new ApiError(400, "Student already placed");
+  }
+
+  interview.status = status;
+
+  // optional: auto mark placed (soft state only)
   if (status === "selected") {
     student.isPlaced = true;
-    student.placedCompany = interview.companyId;
+    student.placedCompany = companyId;
   }
 
   await student.save();
 
-  res.status(200).json({
-    success: true,
-    message: "Interview status updated successfully",
-  });
+  res.json(new ApiResponse(200, student, "Interview status updated"));
 });
 
-/* =========================
-   GET HR INTERVIEWS
-========================= */
-const getHRInterviews = asyncHandler(async (req, res) => {
-  const interviews = await HRInterview.find({ hrId: req.user._id })
-    .populate("studentId", "studentName email mobile")
-    .populate("companyId", "companyName")
-    .sort({ interviewDate: -1 });
+/* ======================================================
+   4️⃣ FINAL PLACEMENT UPDATE (TRANSACTION SAFE)
+====================================================== */
+const updatePlacementByHR = asyncHandler(async (req, res) => {
+  const session = await mongoose.startSession();
 
-  res.status(200).json({
-    success: true,
-    count: interviews.length,
-    data: interviews,
-  });
-});
+  try {
+    await session.withTransaction(async () => {
+      const { id } = req.params;
 
-/* =========================
-   UPCOMING INTERVIEWS (7 DAYS)
-========================= */
-const getUpcomingInterviews = asyncHandler(async (req, res) => {
-  const today = new Date();
-  const nextWeek = new Date();
-  nextWeek.setDate(today.getDate() + 7);
+      const {
+        companiesAttended,
+        isPlaced,
+        placedCompany,
+        mockRating,
+        companyDesignation,
+      } = req.body;
 
-  const interviews = await HRInterview.find({
-    interviewDate: { $gte: today, $lte: nextWeek },
-    status: "scheduled",
-  })
-    .populate("studentId", "studentName email mobile")
-    .populate("companyId", "companyName")
-    .sort({ interviewDate: 1 });
+      const student = await Student.findOne(
+        { _id: id, isDeleted: false },
+        null,
+        { session }
+      );
 
-  res.status(200).json({
-    success: true,
-    count: interviews.length,
-    data: interviews,
-  });
-});
+      if (!student) throw new ApiError(404, "Student not found");
 
-/* =========================
-   STUDENT INTERVIEW TIMELINE
-========================= */
-const getStudentInterviewTimeline = asyncHandler(async (req, res) => {
-  const { studentId } = req.params;
+      /* ===============================
+         UPDATE companiesAttended (optional override)
+      =============================== */
+      if (companiesAttended !== undefined) {
+        if (!Array.isArray(companiesAttended)) {
+          throw new ApiError(400, "companiesAttended must be an array");
+        }
 
-  if (!mongoose.Types.ObjectId.isValid(studentId)) {
-    throw new ApiError(400, "Invalid student id");
+        student.companiesAttended = companiesAttended;
+      }
+
+      /* ===============================
+         UPDATE mockRating
+      =============================== */
+      if (mockRating !== undefined) {
+        const allowed = [
+          "excellent",
+          "good",
+          "average",
+          "poor",
+          "very poor",
+        ];
+
+        const normalized = mockRating.toLowerCase().trim();
+
+        if (!allowed.includes(normalized)) {
+          throw new ApiError(400, "Invalid mock rating");
+        }
+
+        student.mockRating = normalized;
+      }
+
+      /* ===============================
+         PLACEMENT LOGIC
+      =============================== */
+      if (typeof isPlaced === "boolean") {
+        if (isPlaced) {
+          if (!placedCompany) {
+            throw new ApiError(400, "placedCompany required");
+          }
+
+          const company = await Company.findById(placedCompany).session(session);
+          if (!company) throw new ApiError(404, "Company not found");
+
+          if (!student.isPlaced) {
+            // CREATE
+            await Placement.create(
+              [
+                {
+                  studentId: student._id,
+                  companyId: company._id,
+                  fullName: student.studentName,
+                  ugStream: student.ugStream,
+                  studentEmail: student.email,
+                  studentMobile: student.mobile,
+                  studentImage: student.photoUrl,
+                  companyName: company.companyName,
+                  companyImageUrl: company.companyImageUrl,
+                  companyDesignation,
+                },
+              ],
+              { session }
+            );
+
+            student.isPlaced = true;
+            student.placedCompany = company._id;
+          } else {
+            // UPDATE
+            const placement = await Placement.findOne(
+              { studentId: student._id, isDeleted: false },
+              null,
+              { session }
+            );
+
+            if (!placement) throw new ApiError(404, "Placement not found");
+
+            placement.companyId = company._id;
+            placement.companyName = company.companyName;
+            placement.companyImageUrl = company.companyImageUrl;
+
+            if (companyDesignation !== undefined) {
+              placement.companyDesignation = companyDesignation;
+            }
+
+            await placement.save({ session });
+
+            student.placedCompany = company._id;
+          }
+        } else {
+          // REMOVE
+          await Placement.findOneAndUpdate(
+            { studentId: student._id, isDeleted: false },
+            { isDeleted: true, deletedAt: new Date() },
+            { session }
+          );
+
+          student.isPlaced = false;
+          student.placedCompany = null;
+        }
+      }
+
+      /* ===============================
+         ONLY DESIGNATION UPDATE
+      =============================== */
+      if (
+        companyDesignation !== undefined &&
+        student.isPlaced &&
+        isPlaced === undefined
+      ) {
+        const placement = await Placement.findOne(
+          { studentId: student._id, isDeleted: false },
+          null,
+          { session }
+        );
+
+        if (!placement) throw new ApiError(404, "Placement not found");
+
+        placement.companyDesignation = companyDesignation;
+        await placement.save({ session });
+      }
+
+      await student.save({ session });
+    });
+
+    res.json(
+      new ApiResponse(200, null, "Placement updated successfully")
+    );
+  } finally {
+    session.endSession();
   }
-
-  const timeline = await Student.aggregate([
-    { $match: { _id: new mongoose.Types.ObjectId(studentId) } },
-    { $unwind: "$companiesAttended" },
-    {
-      $lookup: {
-        from: "hrinterviews",
-        localField: "companiesAttended.interviewId",
-        foreignField: "_id",
-        as: "interview",
-      },
-    },
-    { $unwind: "$interview" },
-    {
-      $lookup: {
-        from: "companies",
-        localField: "companiesAttended.companyId",
-        foreignField: "_id",
-        as: "company",
-      },
-    },
-    { $unwind: "$company" },
-    {
-      $project: {
-        _id: 0,
-        companyName: "$company.companyName",
-        interviewDate: "$companiesAttended.interviewDate",
-        status: "$companiesAttended.status",
-        feedback: "$interview.feedback",
-        createdAt: "$interview.createdAt",
-      },
-    },
-    { $sort: { interviewDate: -1 } },
-  ]);
-
-  res.status(200).json({
-    success: true,
-    data: timeline,
-  });
 });
 
-/* =========================
+/* ======================================================
    EXPORTS
-========================= */
+====================================================== */
 module.exports = {
-  getEligibleStudents,
-  assignCompanyToStudent,
+  addCompanyToStudent,
+  markAsAttended,
   updateInterviewStatus,
-  getHRInterviews,
-  getUpcomingInterviews,
-  getStudentInterviewTimeline,
+  updatePlacementByHR,
 };

@@ -95,7 +95,10 @@ const studentSchema = new Schema(
       required: [true, "Aggregate is required"],
     },
 
-    // Business Fields
+    /* ===============================
+       Business Fields
+    =============================== */
+
     isJoined: {
       type: Boolean,
       default: false,
@@ -122,6 +125,34 @@ const studentSchema = new Schema(
       default: "average",
       lowercase: true,
     },
+
+    /* ===============================
+       Placement & Interview Tracking
+    =============================== */
+
+    companiesAdded: [
+      {
+        companyId: {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: "Company",
+          required: true,
+        },
+
+        interviewId: {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: "HRInterview",
+          required: true,
+        },
+
+        status: {
+          type: String,
+          enum: ["scheduled", "attended", "selected", "rejected"],
+          default: "scheduled",
+        },
+
+        interviewDate: Date,
+      },
+    ],
 
     companiesAttended: [
       {
@@ -157,7 +188,10 @@ const studentSchema = new Schema(
       ref: "Company",
     },
 
-    // Photo
+    /* ===============================
+       Photo
+    =============================== */
+
     photoUrl: {
       type: String,
       required: true,
@@ -174,7 +208,10 @@ const studentSchema = new Schema(
       required: true,
     },
 
-    // Soft Delete
+    /* ===============================
+       Soft Delete
+    =============================== */
+
     isDeleted: {
       type: Boolean,
       default: false,
@@ -186,7 +223,12 @@ const studentSchema = new Schema(
   { timestamps: true }
 );
 
+/* ===============================
+   Indexes
+=============================== */
+
 studentSchema.index({ "companiesAttended.interviewDate": 1 });
+studentSchema.index({ "companiesAdded.interviewDate": 1 });
 studentSchema.index({ isPlaced: 1 });
 studentSchema.index({ email: 1 });
 studentSchema.index({ mobile: 1 });

@@ -6,7 +6,10 @@ const asyncHandler = require("../utils/asyncHandler");
 const ApiError = require("../utils/ApiError");
 const ApiResponse = require("../utils/ApiResponse");
 const { optimizeImage } = require("../utils/imageProcessor");
-const { uploadToCloudinary, deleteFromCloudinary } = require("../services/cloudinaryImageService");
+const {
+  uploadToCloudinary,
+  deleteFromCloudinary,
+} = require("../services/cloudinaryImageService");
 const buildStudentQuery = require("../utils/buildStudentQuery");
 
 /* ======================================================
@@ -22,48 +25,31 @@ const createStudent = asyncHandler(async (req, res) => {
   const file = req.files.photo[0];
   const rawHash = file.fileHash;
 
-  /* ================================
-     Check duplicate email/mobile/aadhar/photo
-  ================================= */
-
   const existingStudent = await Student.findOne({
     $or: [
       { email: email?.toLowerCase() },
       { mobile },
       { adharNumber },
-      { photoHash: rawHash }
+      { photoHash: rawHash },
     ],
   }).lean();
 
   if (existingStudent) {
-
-    if (existingStudent.email === email?.toLowerCase()) {
+    if (existingStudent.email === email?.toLowerCase())
       throw new ApiError(409, "Student email already exists");
-    }
 
-    if (existingStudent.mobile === mobile) {
+    if (existingStudent.mobile === mobile)
       throw new ApiError(409, "Mobile number already exists");
-    }
 
-    if (existingStudent.adharNumber === adharNumber) {
+    if (existingStudent.adharNumber === adharNumber)
       throw new ApiError(409, "Aadhar number already exists");
-    }
 
-    if (existingStudent.photoHash === rawHash) {
+    if (existingStudent.photoHash === rawHash)
       throw new ApiError(409, "Student photo already uploaded");
-    }
   }
-
-  /* ================================
-     Image Optimization + Upload
-  ================================= */
 
   const optimized = await optimizeImage(file.buffer);
   const uploaded = await uploadToCloudinary(optimized, "students");
-
-  /* ================================
-     Create Student
-  ================================= */
 
   const student = await Student.create({
     ...req.body,
@@ -73,13 +59,13 @@ const createStudent = asyncHandler(async (req, res) => {
     photoHash: rawHash,
   });
 
-  return res
+  res
     .status(201)
     .json(new ApiResponse(201, student, "Student created successfully"));
 });
 
 /* ======================================================
-   GET ALL STUDENTS (PAGINATION + SEARCH + FILTERS + COUNTS)
+   GET ALL STUDENTS
 ====================================================== */
 const getStudents = asyncHandler(async (req, res) => {
   const page = Number(req.query.page) || 1;
@@ -88,18 +74,17 @@ const getStudents = asyncHandler(async (req, res) => {
 
   const query = buildStudentQuery(req.query);
 
-  // 🔀 Sorting
-  let sort = { createdAt: -1 }; // default
+  let sort = { createdAt: -1 };
 
   if (req.query.sortByRating || req.query.sortByBatch) {
     sort = {};
     if (req.query.sortByRating) {
-      const order = req.query.sortByRating.toLowerCase() === "asc" ? 1 : -1;
-      sort.mockRating = order;
+      sort.mockRating =
+        req.query.sortByRating.toLowerCase() === "asc" ? 1 : -1;
     }
     if (req.query.sortByBatch) {
-      const order = req.query.sortByBatch.toLowerCase() === "asc" ? 1 : -1;
-      sort.batch = order;
+      sort.batch =
+        req.query.sortByBatch.toLowerCase() === "asc" ? 1 : -1;
     }
   }
 
@@ -131,7 +116,6 @@ const getStudents = asyncHandler(async (req, res) => {
   );
 });
 
-
 /* ======================================================
    GET STUDENT BY ID
 ====================================================== */
@@ -151,8 +135,11 @@ const updateStudent = asyncHandler(async (req, res) => {
   if (!student) throw new ApiError(404, "Student not found");
 
   if (req.body.email) {
-    const exists = await Student.findOne({ email: req.body.email.toLowerCase(), _id: { $ne: id } });
-    if (exists) throw new ApiError(409, "Student Email Already Exists");
+    const exists = await Student.findOne({
+      email: req.body.email.toLowerCase(),
+      _id: { $ne: id },
+    });
+    if (exists) throw new ApiError(409, "Email already exists");
     student.email = req.body.email.toLowerCase();
   }
 
@@ -160,8 +147,13 @@ const updateStudent = asyncHandler(async (req, res) => {
     const file = req.files.photo[0];
     const rawHash = file.fileHash;
 
-    const duplicate = await Student.findOne({ photoHash: rawHash, _id: { $ne: id } });
-    if (duplicate) throw new ApiError(409, "Student photo already uploaded");
+    const duplicate = await Student.findOne({
+      photoHash: rawHash,
+      _id: { $ne: id },
+    });
+
+    if (duplicate)
+      throw new ApiError(409, "Student photo already uploaded");
 
     if (student.photoId) await deleteFromCloudinary(student.photoId);
 
@@ -173,7 +165,7 @@ const updateStudent = asyncHandler(async (req, res) => {
     student.photoHash = rawHash;
   }
 
-  Object.keys(req.body).forEach(key => {
+  Object.keys(req.body).forEach((key) => {
     if (req.body[key] !== undefined) student[key] = req.body[key];
   });
 
@@ -183,7 +175,7 @@ const updateStudent = asyncHandler(async (req, res) => {
 });
 
 /* ======================================================
-   SOFT DELETE
+   DELETE / RESTORE
 ====================================================== */
 const softDeleteStudent = asyncHandler(async (req, res) => {
   const student = await Student.findById(req.params.id);
@@ -193,12 +185,9 @@ const softDeleteStudent = asyncHandler(async (req, res) => {
   student.deletedAt = new Date();
   await student.save();
 
-  res.json(new ApiResponse(200, student, "Student soft deleted"));
+  res.json(new ApiResponse(200, null, "Student soft deleted"));
 });
 
-/* ======================================================
-   RESTORE
-====================================================== */
 const restoreStudent = asyncHandler(async (req, res) => {
   const student = await Student.findById(req.params.id);
   if (!student) throw new ApiError(404, "Student not found");
@@ -207,18 +196,14 @@ const restoreStudent = asyncHandler(async (req, res) => {
   student.deletedAt = null;
   await student.save();
 
-  res.json(new ApiResponse(200, student, "Student restored"));
+  res.json(new ApiResponse(200, null, "Student restored"));
 });
 
-/* ======================================================
-   HARD DELETE
-====================================================== */
 const deleteStudent = asyncHandler(async (req, res) => {
   const student = await Student.findById(req.params.id);
   if (!student) throw new ApiError(404, "Student not found");
 
   if (student.photoId) await deleteFromCloudinary(student.photoId);
-
   await student.deleteOne();
 
   res.json(new ApiResponse(200, null, "Student permanently deleted"));
@@ -226,162 +211,6 @@ const deleteStudent = asyncHandler(async (req, res) => {
 
 
 
-/* ======================================================
-   UPDATE PLACEMENT INFO
-====================================================== */
-
-
-const updatePlacementInfo = asyncHandler(async (req, res) => {
-  const session = await mongoose.startSession();
-
-  try {
-    await session.withTransaction(async () => {
-      const { id } = req.params;
-
-      const {
-        companiesAttended,
-        isPlaced, 
-        placedCompany,
-        mockRating,
-        companyDesignation,
-        rating,
-        review,
-      } = req.body;
-
-      const student = await Student.findOne(
-        { _id: id, isDeleted: false },
-        null,
-        { session }
-      );
-
-      if (!student) throw new ApiError(404, "Student not found");
-
-      /* ===============================
-         Update companiesAttended
-      =============================== */
-
-      if (Array.isArray(companiesAttended)) {
-        student.companiesAttended = [...new Set(companiesAttended)];
-      }
-
-      /* ===============================
-         Update mockRating
-      =============================== */
-
-      if (mockRating !== undefined) {
-        const allowedRatings = [
-          "excellent",
-          "good",
-          "average",
-          "poor",
-          "very poor",
-        ];
-
-        if (!allowedRatings.includes(mockRating.toLowerCase())) {
-          throw new ApiError(400, "Invalid mock rating value");
-        }
-
-        student.mockRating = mockRating.toLowerCase();
-      }
-
-      /* ===============================
-         Placement Handling
-      =============================== */
-
-      if (typeof isPlaced === "boolean") {
-        if (isPlaced) {
-          if (!placedCompany) {
-            throw new ApiError(
-              400,
-              "placedCompany is required when marking student as placed"
-            );
-          }
-
-          if (!mongoose.Types.ObjectId.isValid(placedCompany)) {
-            throw new ApiError(400, "Invalid company id");
-          }
-
-          if (student.isPlaced) {
-            throw new ApiError(400, "Student already placed");
-          }
-
-          const company = await Company.findOne(
-            { _id: placedCompany, isDeleted: false },
-            null,
-            { session }
-          );
-
-          if (!company) {
-            throw new ApiError(404, "Placed company not found");
-          }
-
-          const existingPlacement = await Placement.findOne(
-            { studentId: student._id, isDeleted: false },
-            null,
-            { session }
-          );
-
-          if (existingPlacement) {
-            throw new ApiError(
-              400,
-              "Student already has an active placement"
-            );
-          }
-
-          await Placement.create(
-            [
-              {
-                studentId: student._id,
-                companyId: company._id,
-
-                fullName: student.studentName,
-                ugStream: student.ugStream,
-                studentEmail: student.email,
-                studentMobile: student.mobile,
-                studentImage: student.photoUrl,
-
-                companyName: company.companyName,
-                companyImageUrl: company.companyImageUrl,
-
-                companyDesignation,
-                rating,
-                review,
-              },
-            ],
-            { session }
-          );
-
-          student.isPlaced = true;
-          student.placedCompany = company._id;
-        } else {
-          await Placement.findOneAndUpdate(
-            {
-              studentId: student._id,
-              companyId: student.placedCompany,
-              isDeleted: false,
-            },
-            {
-              isDeleted: true,
-              deletedAt: new Date(),
-            },
-            { session }
-          );
-
-          student.isPlaced = false;
-          student.placedCompany = null;
-        }
-      }
-
-      await student.save({ session });
-    });
-
-    return res.json(
-      new ApiResponse(200, null, "Placement details updated successfully")
-    );
-  } finally {
-    session.endSession();
-  }
-});
 /* ======================================================
    EXPORTS
 ====================================================== */
@@ -393,5 +222,5 @@ module.exports = {
   softDeleteStudent,
   restoreStudent,
   deleteStudent,
-  updatePlacementInfo
+
 };

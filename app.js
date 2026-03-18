@@ -15,6 +15,8 @@ const placementRoutes = require("./routes/placement.routes");
 const studentRoutes = require("./routes/student.routes");
 const companyRoutes = require("./routes/company.routes");
 const enquiryRoutes = require("./routes/enquiry.routes");
+const hrRoutes = require("./routes/hr.routes");
+
 
 
 const app = express();
@@ -79,6 +81,8 @@ app.use("/api/students",studentRoutes);
 app.use("/api/placements", placementRoutes);
 app.use("/api/companies", companyRoutes);
 app.use("/api/enquiries", enquiryRoutes);
+app.use("/api/hr", hrRoutes);
+
 
 
 // ------------------------------------
