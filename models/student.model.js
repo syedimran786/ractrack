@@ -130,53 +130,80 @@ const studentSchema = new Schema(
        Placement & Interview Tracking
     =============================== */
 
-    companiesAdded: [
-      {
-        companyId: {
-          type: mongoose.Schema.Types.ObjectId,
-          ref: "Company",
-          required: true,
-        },
+  /* ===============================
+   INTERVIEW TRACKING (UPDATED)
+=============================== */
 
-        interviewId: {
-          type: mongoose.Schema.Types.ObjectId,
-          ref: "HRInterview",
-          required: true,
-        },
+companiesAdded: [
+  {
+    companyName: {
+      type: String,
+      required: true,
+      lowercase: true,
+      trim: true,
+    },
 
-        status: {
-          type: String,
-          enum: ["scheduled", "attended", "selected", "rejected"],
-          default: "scheduled",
-        },
+    companyCode: {
+      type: String,
+      required: true,
+      uppercase: true,
+      trim: true,
+    },
 
-        interviewDate: Date,
-      },
-    ],
+    status: {
+      type: String,
+      enum: ["scheduled"],
+      default: "scheduled",
+    },
 
-    companiesAttended: [
-      {
-        companyId: {
-          type: mongoose.Schema.Types.ObjectId,
-          ref: "Company",
-          required: true,
-        },
+    addedDate: {
+      type: Date,
+      default: Date.now,
+    },
 
-        interviewId: {
-          type: mongoose.Schema.Types.ObjectId,
-          ref: "HRInterview",
-          required: true,
-        },
+    interviewDate: Date,
 
-        status: {
-          type: String,
-          enum: ["scheduled", "attended", "selected", "rejected"],
-          default: "scheduled",
-        },
+    interviewFeedback: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+  },
+],
 
-        interviewDate: Date,
-      },
-    ],
+companiesAttended: [
+  {
+    companyName: {
+      type: String,
+      required: true,
+      lowercase: true,
+      trim: true,
+    },
+
+    companyCode: {
+      type: String,
+      required: true,
+      uppercase: true,
+      trim: true,
+    },
+
+    status: {
+      type: String,
+      enum: ["attended", "selected", "rejected"],
+      default: "attended",
+    },
+
+    addedDate: Date,
+
+    interviewDate: Date,
+
+    interviewFeedback: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+  },
+],
 
     isPlaced: {
       type: Boolean,
@@ -227,8 +254,8 @@ const studentSchema = new Schema(
    Indexes
 =============================== */
 
-studentSchema.index({ "companiesAttended.interviewDate": 1 });
-studentSchema.index({ "companiesAdded.interviewDate": 1 });
+studentSchema.index({ "companiesAdded.companyCode": 1 });
+studentSchema.index({ "companiesAttended.companyCode": 1 });
 studentSchema.index({ isPlaced: 1 });
 studentSchema.index({ email: 1 });
 studentSchema.index({ mobile: 1 });

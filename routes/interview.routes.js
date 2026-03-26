@@ -4,33 +4,48 @@ const router = express.Router();
 const {
   createInterview,
   getInterviews,
-  getInterviewById,
+  getInterviewByCode,
   updateInterview,
-  softDeleteInterview,
-  restoreInterview,
+  getEligibleStudents,
+  assignInterviewToStudent,
+  markAsAttended,
+  updateInterviewStatus,
 } = require("../controllers/interview.controller");
 
-const protect = require("../middlewares/auth.middleware");
-const authorize = require("../middlewares/role.middleware");
+/* ======================================================
+   📌 INTERVIEW MANAGEMENT
+====================================================== */
 
+// 1️⃣ Create Interview
+router.post("/", createInterview);
 
-
-router.post(
-  "/add",
-  protect,
-  authorize("admin", "hr"),
-  createInterview
-);
-
-
+// 2️⃣ Get All Interviews (latest + filters)
 router.get("/", getInterviews);
 
-router.get("/:id", getInterviewById);
+// 3️⃣ Get Single Interview
+router.get("/:companyCode", getInterviewByCode);
 
-router.put("/update/:id", updateInterview);
+// 4️⃣ Update Interview
+router.patch("/:companyCode", updateInterview);
 
-router.put("/delete/:id", softDeleteInterview);
+/* ======================================================
+   📌 ELIGIBILITY
+====================================================== */
 
-router.put("/restore/:id", restoreInterview);
+// 5️⃣ Get Eligible Students
+router.get("/:companyCode/eligible", getEligibleStudents);
+
+/* ======================================================
+   📌 HR ACTIONS ON STUDENTS
+====================================================== */
+
+// 6️⃣ Assign Interview to Student
+router.post("/assign/:studentId", assignInterviewToStudent);
+
+// 7️⃣ Mark as Attended
+router.patch("/attended/:studentId", markAsAttended);
+
+// 8️⃣ Update Status + Feedback
+router.patch("/status/:studentId", updateInterviewStatus);
 
 module.exports = router;

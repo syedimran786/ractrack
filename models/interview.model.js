@@ -1,56 +1,77 @@
-const { Schema, model } = require("mongoose");
+const mongoose  = require("mongoose");
 
-const interviewSchema = new Schema(
+const interviewSchema = new mongoose.Schema(
   {
-    interviewName: {
+    companyName: {
       type: String,
       required: true,
-      trim: true,
       lowercase: true,
+      trim: true,
+    },
+
+    companyCode: {
+      type: String,
+      required: true,
+      uppercase: true,
+      trim: true,
+      unique: true,
     },
 
     announcedDate: {
       type: Date,
-      required: true,
+      default: Date.now,
     },
 
     requiredCandidates: {
       type: Number,
       required: true,
-      min: 1,
     },
 
     expectedDate: {
       type: Date,
-      default: null, // N/A
+      default: null,
     },
 
     status: {
       type: String,
-      enum: ["scheduled", "not scheduled"],
-      default: "not scheduled",
+      enum: ["open", "closed", "completed"],
+      default: "open",
     },
 
     attendedCandidates: {
       type: Number,
       default: 0,
-      min: 0,
     },
 
     feedback: {
       type: String,
-      trim: true,
+      default: "",
     },
 
     isActive: {
       type: Boolean,
       default: true,
-      index: true,
+    },
+
+    /* ===============================
+       CRITERIA
+    =============================== */
+    criteria: {
+      aggregate: {
+        type: String, // "any" OR number
+        default: "any",
+      },
+
+      ugDegree: String,
+      ugStream: String,
+      ugYop: Number,
+
+      pgDegree: String,
+      pgStream: String,
+      pgYop: Number,
     },
   },
-  {
-    timestamps: true,
-  }
+  { timestamps: true }
 );
 
-module.exports = model("Interview", interviewSchema);
+module.exports = mongoose.model("Interview", interviewSchema);

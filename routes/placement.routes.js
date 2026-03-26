@@ -7,6 +7,7 @@ const {
   submitOrUpdateReview,
   deletePlacement,
   restorePlacement,
+  updatePlacementByHR,
 } = require("../controllers/placement.controller");
 
 // 📌 1️⃣ Get all placements (with filters + pagination)
@@ -16,7 +17,10 @@ router.get("/", getPlacements);
 router.get("/:id", getPlacementById);
 
 // 📌 3️⃣ Submit / Update Review
-router.post("/review", submitOrUpdateReview);
+router.post("/review/:studentId", submitOrUpdateReview);
+
+//  Final Placement Update (Transaction Safe)
+router.patch("/updateplacement/:id", updatePlacementByHR);
 
 // 📌 4️⃣ Soft Delete Placement
 router.patch("/delete/:id", deletePlacement);

@@ -2,6 +2,7 @@ const mongoose = require("mongoose");
 
 const asyncHandler = require("express-async-handler");
 const Placement = require("../models/placement.model");
+const Company = require("../models/company.model");
 const Student = require("../models/student.model");
 const ApiError = require("../utils/ApiError");
 const ApiResponse = require("../utils/ApiResponse");
@@ -208,11 +209,12 @@ const getPlacementById = asyncHandler(async (req, res) => {
 });
 
 /* =====================================================
-   3️⃣ SUBMIT / UPDATE REVIEW (Editable)
+   3️⃣ SUBMIT / UPDATE REVIEW (Editable) //! Student
 ===================================================== */
 
 const submitOrUpdateReview = asyncHandler(async (req, res) => {
-  const { studentId, rating, review } = req.body;
+  const { studentId } = req.params;
+  const { rating, review } = req.body;
 
   if (!rating || !review)
     throw new ApiError(400, "Rating and review are required");
@@ -244,6 +246,165 @@ const submitOrUpdateReview = asyncHandler(async (req, res) => {
   res.json(new ApiResponse(200, placement, "Review saved successfully"));
 });
 
+
+/* ======================================================
+   4️⃣ FINAL PLACEMENT UPDATE (TRANSACTION SAFE) //! HR
+====================================================== */
+
+const updatePlacementByHR = asyncHandler(async (req, res) => {
+  const session = await mongoose.startSession();
+
+  try {
+    await session.withTransaction(async () => {
+      const { id } = req.params;
+
+      const {
+        companiesAttended,
+        isPlaced,
+        placedCompany,
+        mockRating,
+        companyDesignation,
+      } = req.body;
+
+      const student = await Student.findOne(
+        { _id: id, isDeleted: false },
+        null,
+        { session }
+      );
+
+      if (!student) throw new ApiError(404, "Student not found");
+
+      /* ===============================
+         UPDATE companiesAttended (optional override)
+      =============================== */
+      if (companiesAttended !== undefined) {
+        if (!Array.isArray(companiesAttended)) {
+          throw new ApiError(400, "companiesAttended must be an array");
+        }
+
+        student.companiesAttended = companiesAttended;
+      }
+
+      /* ===============================
+         UPDATE mockRating
+      =============================== */
+      if (mockRating !== undefined) {
+        const allowed = [
+          "excellent",
+          "good",
+          "average",
+          "poor",
+          "very poor",
+        ];
+
+        const normalized = mockRating.toLowerCase().trim();
+
+        if (!allowed.includes(normalized)) {
+          throw new ApiError(400, "Invalid mock rating");
+        }
+
+        student.mockRating = normalized;
+      }
+
+      /* ===============================
+         PLACEMENT LOGIC
+      =============================== */
+      if (typeof isPlaced === "boolean") {
+        if (isPlaced) {
+          if (!placedCompany) {
+            throw new ApiError(400, "placedCompany required");
+          }
+
+          const company = await Company.findById(placedCompany).session(session);
+          if (!company) throw new ApiError(404, "Company not found");
+
+          if (!student.isPlaced) {
+            // CREATE
+            await Placement.create(
+              [
+                {
+                  studentId: student._id,
+                  companyId: company._id,
+                  fullName: student.studentName,
+                  ugStream: student.ugStream,
+                  studentEmail: student.email,
+                  studentMobile: student.mobile,
+                  studentImage: student.photoUrl,
+                  companyName: company.companyName,
+                  companyImageUrl: company.companyImageUrl,
+                  companyDesignation,
+                },
+              ],
+              { session }
+            );
+
+            student.isPlaced = true;
+            student.placedCompany = company._id;
+          } else {
+            // UPDATE
+            const placement = await Placement.findOne(
+              { studentId: student._id, isDeleted: false },
+              null,
+              { session }
+            );
+
+            if (!placement) throw new ApiError(404, "Placement not found");
+
+            placement.companyId = company._id;
+            placement.companyName = company.companyName;
+            placement.companyImageUrl = company.companyImageUrl;
+
+            if (companyDesignation !== undefined) {
+              placement.companyDesignation = companyDesignation;
+            }
+
+            await placement.save({ session });
+
+            student.placedCompany = company._id;
+          }
+        } else {
+          // REMOVE
+          await Placement.findOneAndUpdate(
+            { studentId: student._id, isDeleted: false },
+            { isDeleted: true, deletedAt: new Date() },
+            { session }
+          );
+
+          student.isPlaced = false;
+          student.placedCompany = null;
+        }
+      }
+
+      /* ===============================
+         ONLY DESIGNATION UPDATE
+      =============================== */
+      if (
+        companyDesignation !== undefined &&
+        student.isPlaced &&
+        isPlaced === undefined
+      ) {
+        const placement = await Placement.findOne(
+          { studentId: student._id, isDeleted: false },
+          null,
+          { session }
+        );
+
+        if (!placement) throw new ApiError(404, "Placement not found");
+
+        placement.companyDesignation = companyDesignation;
+        await placement.save({ session });
+      }
+
+      await student.save({ session });
+    });
+
+    res.json(
+      new ApiResponse(200, null, "Placement updated successfully")
+    );
+  } finally {
+    session.endSession();
+  }
+});
 /* =====================================================
    4️⃣ SOFT DELETE PLACEMENT
 ===================================================== */
@@ -296,6 +457,7 @@ module.exports = {
   getPlacements,
   getPlacementById,
   submitOrUpdateReview,
+  updatePlacementByHR,
   deletePlacement,
   restorePlacement,
 };
