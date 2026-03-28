@@ -35,17 +35,62 @@ const createInterview = asyncHandler(async (req, res) => {
    2️⃣ GET ALL INTERVIEWS (LATEST + FILTERS)
 ====================================================== */
 const getInterviews = asyncHandler(async (req, res) => {
-  const { status, isActive = true } = req.query;
+  let {
+    page = 1,
+    limit = 10,
+    status,
+    isActive,
+    search,
+  } = req.query;
+
+  // ✅ Convert to proper types
+  page = parseInt(page) || 1;
+  limit = parseInt(limit) || 10;
+
+  const skip = (page - 1) * limit;
 
   const filter = {};
 
-  if (status) filter.status = status;
-  if (isActive !== undefined) filter.isActive = isActive;
+  // ✅ DEFAULT: latest + open + active
+  if (!status) {
+    filter.status = "open";
+  } else {
+    filter.status = status.toLowerCase();
+  }
 
-  const interviews = await Interview.find(filter)
-    .sort({ createdAt: -1 });
+  if (isActive === undefined) {
+    filter.isActive = true;
+  } else {
+    filter.isActive = isActive === "true";
+  }
 
-  res.json(new ApiResponse(200, interviews));
+  // ✅ Search (companyName OR companyCode)
+  if (search) {
+    filter.$or = [
+      { companyName: { $regex: search, $options: "i" } },
+      { companyCode: { $regex: search, $options: "i" } },
+    ];
+  }
+
+  // ✅ Query with pagination + latest first
+  const [interviews, total] = await Promise.all([
+    Interview.find(filter)
+      .sort({ createdAt: -1 }) // latest
+      .skip(skip)
+      .limit(limit),
+
+    Interview.countDocuments(filter),
+  ]);
+
+  res.json(
+    new ApiResponse(200, {
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit),
+      interviews,
+    })
+  );
 });
 
 /* ======================================================
@@ -64,7 +109,7 @@ const getInterviewByCode = asyncHandler(async (req, res) => {
 });
 
 /* ======================================================
-   4️⃣ UPDATE INTERVIEW
+   4️⃣ UPDATE INTERVIEW  //! Global Interviews status
 ====================================================== */
 const updateInterview = asyncHandler(async (req, res) => {
   const { companyCode } = req.params;
@@ -75,7 +120,9 @@ const updateInterview = asyncHandler(async (req, res) => {
 
   if (!interview) throw new ApiError(404, "Interview not found");
 
+  //! Only these fields can be updated. if you send other fields it will be ignored
   const allowedFields = [
+    "companyName",
     "requiredCandidates",
     "expectedDate",
     "status",
@@ -142,7 +189,7 @@ const assignInterviewToStudent = asyncHandler(async (req, res) => {
 
   const student = await Student.findOne({
     _id: studentId,
-    isDeleted: false, // ✅ FIX
+    isDeleted: false,
   });
 
   if (!student) throw new ApiError(404, "Student not found");
@@ -150,24 +197,22 @@ const assignInterviewToStudent = asyncHandler(async (req, res) => {
   const interview = await Interview.findOne({ companyCode });
   if (!interview) throw new ApiError(404, "Interview not found");
 
-  // ✅ CHECK IN BOTH ARRAYS (IMPORTANT)
-  const existsInAdded = student.companiesAdded.some(
+  // ✅ Check if already exists
+  const exists = student.companies.some(
     (c) => c.companyCode === companyCode
   );
 
-  const existsInAttended = student.companiesAttended.some(
-    (c) => c.companyCode === companyCode
-  );
-
-  if (existsInAdded || existsInAttended) {
+  if (exists) {
     throw new ApiError(409, "Interview already assigned to student");
   }
 
-  student.companiesAdded.push({
+  // ✅ Add to single array
+  student.companies.push({
     companyName: interview.companyName,
     companyCode,
-    interviewDate,
+    interviewDate: interviewDate || null, // ✅ default null
     addedDate: new Date(),
+    status: "not scheduled",
   });
 
   await student.save();
@@ -185,25 +230,19 @@ const markAsAttended = asyncHandler(async (req, res) => {
 
   const student = await Student.findOne({
     _id: studentId,
-    isDeleted: false, // ✅ FIX
+    isDeleted: false,
   });
 
   if (!student) throw new ApiError(404, "Student not found");
 
-  const index = student.companiesAdded.findIndex(
+  const interview = student.companies.find(
     (c) => c.companyCode === companyCode
   );
 
-  if (index === -1) throw new ApiError(404, "Interview not found");
+  if (!interview) throw new ApiError(404, "Interview not found");
 
-  const interviewData = student.companiesAdded[index];
-
-  student.companiesAdded.splice(index, 1);
-
-  student.companiesAttended.push({
-    ...interviewData.toObject(),
-    status: "attended",
-  });
+  // ✅ Just update status (no moving arrays)
+  interview.status = "attended";
 
   await student.save();
 
@@ -216,30 +255,48 @@ const markAsAttended = asyncHandler(async (req, res) => {
 });
 
 /* ======================================================
-   8️⃣ UPDATE STATUS + FEEDBACK
+   8️⃣ UPDATE STATUS + FEEDBACK //! Student interview Status
 ====================================================== */
 const updateInterviewStatus = asyncHandler(async (req, res) => {
   const { studentId } = req.params;
-  let { companyCode, status, interviewFeedback } = req.body;
+  let { companyCode, status, interviewFeedback, interviewDate } = req.body;
+
+  if (!companyCode) {
+    throw new ApiError(400, "companyCode is required");
+  }
 
   companyCode = companyCode.trim().toUpperCase();
 
   const student = await Student.findOne({
     _id: studentId,
-    isDeleted: false, // ✅ FIX
+    isDeleted: false,
   });
 
   if (!student) throw new ApiError(404, "Student not found");
 
-  const interview = student.companiesAttended.find(
+  const interview = student.companies.find(
     (c) => c.companyCode === companyCode
   );
 
-  if (!interview) throw new ApiError(404, "Interview not found");
+  if (!interview) {
+    throw new ApiError(404, "Interview not found for this student");
+  }
 
-  if (status && !["selected", "rejected"].includes(status)) {
+  // ✅ Validate status
+  if (
+    status &&
+    !["scheduled", "attended", "selected", "rejected", "not scheduled"].includes(
+      status.toLowerCase()
+    )
+  ) {
     throw new ApiError(400, "Invalid status");
   }
+
+  status = status?.toLowerCase();
+
+  // =========================
+  // 🔁 UPDATE FIELDS
+  // =========================
 
   if (status) interview.status = status;
 
@@ -247,14 +304,30 @@ const updateInterviewStatus = asyncHandler(async (req, res) => {
     interview.interviewFeedback = interviewFeedback.trim();
   }
 
+  if (interviewDate) {
+    interview.interviewDate = interviewDate;
+  }
+
+  // =========================
+  // 🎯 FIXED PLACEMENT LOGIC
+  // =========================
+
   if (status === "selected" && !student.isPlaced) {
+    const company = await Company.findOne({ companyCode });
+
+    if (!company) {
+      throw new ApiError(404, "Company not found");
+    }
+
     student.isPlaced = true;
-    student.placedCompany = interview.companyName;
+    student.placedCompany = company._id; // ✅ FIXED
   }
 
   await student.save();
 
-  res.json(new ApiResponse(200, student, "Updated successfully"));
+  res.json(
+    new ApiResponse(200, student, "Interview updated successfully")
+  );
 });
 /* ======================================================
    EXPORTS
