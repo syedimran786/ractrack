@@ -134,7 +134,11 @@ const studentSchema = new Schema(
    INTERVIEW TRACKING (UPDATED)
 =============================== */
 
-companiesAdded: [
+/* ===============================
+   INTERVIEW TRACKING (SIMPLIFIED)
+=============================== */
+
+companies: [
   {
     companyName: {
       type: String,
@@ -152,8 +156,15 @@ companiesAdded: [
 
     status: {
       type: String,
-      enum: ["scheduled"],
-      default: "scheduled",
+      enum: [
+        "not scheduled",
+        "scheduled",
+        "attended",
+        "selected",
+        "rejected",
+      ],
+      default: "not scheduled",
+      lowercase: true,
     },
 
     addedDate: {
@@ -161,41 +172,10 @@ companiesAdded: [
       default: Date.now,
     },
 
-    interviewDate: Date,
-
-    interviewFeedback: {
-      type: String,
-      default: "",
-      trim: true,
+    interviewDate: {
+      type: Date,
+      default: null, // ✅ instead of "N/A"
     },
-  },
-],
-
-companiesAttended: [
-  {
-    companyName: {
-      type: String,
-      required: true,
-      lowercase: true,
-      trim: true,
-    },
-
-    companyCode: {
-      type: String,
-      required: true,
-      uppercase: true,
-      trim: true,
-    },
-
-    status: {
-      type: String,
-      enum: ["attended", "selected", "rejected"],
-      default: "attended",
-    },
-
-    addedDate: Date,
-
-    interviewDate: Date,
 
     interviewFeedback: {
       type: String,

@@ -259,7 +259,6 @@ const updatePlacementByHR = asyncHandler(async (req, res) => {
       const { id } = req.params;
 
       const {
-        companiesAttended,
         isPlaced,
         placedCompany,
         mockRating,
@@ -275,21 +274,10 @@ const updatePlacementByHR = asyncHandler(async (req, res) => {
       if (!student) throw new ApiError(404, "Student not found");
 
       /* ===============================
-         UPDATE companiesAttended (optional override)
-      =============================== */
-      if (companiesAttended !== undefined) {
-        if (!Array.isArray(companiesAttended)) {
-          throw new ApiError(400, "companiesAttended must be an array");
-        }
-
-        student.companiesAttended = companiesAttended;
-      }
-
-      /* ===============================
-         UPDATE mockRating
+         UPDATE MOCK RATING
       =============================== */
       if (mockRating !== undefined) {
-        const allowed = [
+        const allowedRatings = [
           "excellent",
           "good",
           "average",
@@ -299,7 +287,7 @@ const updatePlacementByHR = asyncHandler(async (req, res) => {
 
         const normalized = mockRating.toLowerCase().trim();
 
-        if (!allowed.includes(normalized)) {
+        if (!allowedRatings.includes(normalized)) {
           throw new ApiError(400, "Invalid mock rating");
         }
 
@@ -307,31 +295,31 @@ const updatePlacementByHR = asyncHandler(async (req, res) => {
       }
 
       /* ===============================
-         PLACEMENT LOGIC
+         PLACEMENT LOGIC (CORE)
       =============================== */
       if (typeof isPlaced === "boolean") {
         if (isPlaced) {
           if (!placedCompany) {
-            throw new ApiError(400, "placedCompany required");
+            throw new ApiError(400, "placedCompany is required");
           }
 
-          const company = await Company.findById(placedCompany).session(session);
-          if (!company) throw new ApiError(404, "Company not found");
+          const companyDoc = await Company.findById(placedCompany).session(session);
+          if (!companyDoc) throw new ApiError(404, "Company not found");
 
           if (!student.isPlaced) {
-            // CREATE
+            // ✅ CREATE PLACEMENT
             await Placement.create(
               [
                 {
                   studentId: student._id,
-                  companyId: company._id,
+                  companyId: companyDoc._id,
                   fullName: student.studentName,
                   ugStream: student.ugStream,
                   studentEmail: student.email,
                   studentMobile: student.mobile,
                   studentImage: student.photoUrl,
-                  companyName: company.companyName,
-                  companyImageUrl: company.companyImageUrl,
+                  companyName: companyDoc.companyName,
+                  companyImageUrl: companyDoc.companyImageUrl,
                   companyDesignation,
                 },
               ],
@@ -339,9 +327,9 @@ const updatePlacementByHR = asyncHandler(async (req, res) => {
             );
 
             student.isPlaced = true;
-            student.placedCompany = company._id;
+            student.placedCompany = companyDoc._id;
           } else {
-            // UPDATE
+            // ✅ UPDATE EXISTING PLACEMENT
             const placement = await Placement.findOne(
               { studentId: student._id, isDeleted: false },
               null,
@@ -350,9 +338,9 @@ const updatePlacementByHR = asyncHandler(async (req, res) => {
 
             if (!placement) throw new ApiError(404, "Placement not found");
 
-            placement.companyId = company._id;
-            placement.companyName = company.companyName;
-            placement.companyImageUrl = company.companyImageUrl;
+            placement.companyId = companyDoc._id;
+            placement.companyName = companyDoc.companyName;
+            placement.companyImageUrl = companyDoc.companyImageUrl;
 
             if (companyDesignation !== undefined) {
               placement.companyDesignation = companyDesignation;
@@ -360,10 +348,10 @@ const updatePlacementByHR = asyncHandler(async (req, res) => {
 
             await placement.save({ session });
 
-            student.placedCompany = company._id;
+            student.placedCompany = companyDoc._id;
           }
         } else {
-          // REMOVE
+          // ✅ REMOVE PLACEMENT (SOFT DELETE)
           await Placement.findOneAndUpdate(
             { studentId: student._id, isDeleted: false },
             { isDeleted: true, deletedAt: new Date() },

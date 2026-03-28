@@ -90,7 +90,7 @@ const getStudents = asyncHandler(async (req, res) => {
 
   const [students, total, stats] = await Promise.all([
     Student.find(query)
-      .select("-photoHash -photoId")
+      .select("-photoHash -photoId -companies") // ✅ hide companies for list
       .skip(skip)
       .limit(limit)
       .sort(sort)
@@ -110,7 +110,12 @@ const getStudents = asyncHandler(async (req, res) => {
   res.json(
     new ApiResponse(200, {
       students,
-      pagination: { total, page, limit, totalPages: Math.ceil(total / limit) },
+      pagination: {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit),
+      },
       counts: { placed, notPlaced },
     })
   );
@@ -127,22 +132,26 @@ const getStudentById = asyncHandler(async (req, res) => {
 });
 
 /* ======================================================
-   UPDATE STUDENT
+   UPDATE STUDENT (SAFE UPDATE)
 ====================================================== */
 const updateStudent = asyncHandler(async (req, res) => {
   const { id } = req.params;
+
   const student = await Student.findById(id);
   if (!student) throw new ApiError(404, "Student not found");
 
+  // ✅ Email uniqueness
   if (req.body.email) {
     const exists = await Student.findOne({
       email: req.body.email.toLowerCase(),
       _id: { $ne: id },
     });
     if (exists) throw new ApiError(409, "Email already exists");
+
     student.email = req.body.email.toLowerCase();
   }
 
+  // ✅ Photo update
   if (req.files?.photo?.[0]) {
     const file = req.files.photo[0];
     const rawHash = file.fileHash;
@@ -165,8 +174,35 @@ const updateStudent = asyncHandler(async (req, res) => {
     student.photoHash = rawHash;
   }
 
-  Object.keys(req.body).forEach((key) => {
-    if (req.body[key] !== undefined) student[key] = req.body[key];
+  // ✅ SAFE FIELD UPDATE (NO companies overwrite)
+  const allowedFields = [
+    "studentName",
+    "mobile",
+    "adharNumber",
+    "fatherName",
+    "collegeName",
+    "address",
+    "tenthPercentage",
+    "pucPercentage",
+    "ugDegree",
+    "ugStream",
+    "ugPercentage",
+    "ugYop",
+    "pgDegree",
+    "pgStream",
+    "pgPercentage",
+    "pgYop",
+    "aggregate",
+    "batch",
+    "isJoined",
+    "isPaid",
+    "mockRating",
+  ];
+
+  allowedFields.forEach((field) => {
+    if (req.body[field] !== undefined) {
+      student[field] = req.body[field];
+    }
   });
 
   await student.save();
@@ -183,6 +219,7 @@ const softDeleteStudent = asyncHandler(async (req, res) => {
 
   student.isDeleted = true;
   student.deletedAt = new Date();
+
   await student.save();
 
   res.json(new ApiResponse(200, null, "Student soft deleted"));
@@ -194,6 +231,7 @@ const restoreStudent = asyncHandler(async (req, res) => {
 
   student.isDeleted = false;
   student.deletedAt = null;
+
   await student.save();
 
   res.json(new ApiResponse(200, null, "Student restored"));
@@ -204,12 +242,11 @@ const deleteStudent = asyncHandler(async (req, res) => {
   if (!student) throw new ApiError(404, "Student not found");
 
   if (student.photoId) await deleteFromCloudinary(student.photoId);
+
   await student.deleteOne();
 
   res.json(new ApiResponse(200, null, "Student permanently deleted"));
 });
-
-
 
 /* ======================================================
    EXPORTS
@@ -222,5 +259,4 @@ module.exports = {
   softDeleteStudent,
   restoreStudent,
   deleteStudent,
-
 };
