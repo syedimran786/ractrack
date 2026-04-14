@@ -12,56 +12,58 @@ const {
    CREATE TRAINER
 ====================================================== */
 const createTrainer = asyncHandler(async (req, res) => {
-
   const { trainerName, email, designation, linkedin, facebook, instagram } =
     req.body;
 
-  // 1️⃣ Check email duplicate
-  const existingTrainer = await Trainer.findOne({ email: email.toLowerCase() });
-  if (existingTrainer) {
-    throw new ApiError(400, "Trainer with this email already exists");
+  // 1️⃣ Basic validation
+  if (!trainerName || !email) {
+    throw new ApiError(400, "trainerName and email are required");
   }
-  let imageUrl = null;
-  let imageId = null;
-  let imageHash = null;
 
-  // 2️⃣ Process and Upload Image
-  if (req.files?.trainerImage?.[0]) {
-    const file = req.files.trainerImage[0]; 
+  // 2️⃣ Image mandatory
+  if (!req.files?.trainerImage?.[0]) {
+    throw new ApiError(400, "Trainer image is required");
+  }
 
+  const file = req.files.trainerImage[0];
+  const normalizedEmail = email.toLowerCase();
 
-    // Create hash for duplicate detection
-    const { processedBuffer, hash } = await processImageAndGenerateHash(
-      file.buffer
-    );
-    imageHash = hash;
+  // 3️⃣ Process image ONCE
+  const { processedBuffer, hash } = await processImageAndGenerateHash(
+    file.buffer
+  );
 
-    // Check if the same image already exists
-    const existingHashTrainer = await Trainer.findOne({ imageHash });
+  // 4️⃣ Single DB query for duplicate check (OPTIMIZED)
+  const existingTrainer = await Trainer.findOne({
+    $or: [{ email: normalizedEmail }, { imageHash: hash }],
+  });
 
-    if (existingHashTrainer) {
+  if (existingTrainer) {
+    if (existingTrainer.email === normalizedEmail) {
+      throw new ApiError(400, "Trainer with this email already exists");
+    }
+    if (existingTrainer.imageHash === hash) {
       throw new ApiError(
         400,
         "Trainer image already exists. Please upload a different image"
       );
     }
-
-    // Upload Unique Image to Cloudinary
-    const upload = await uploadToCloudinary(processedBuffer, "trainers");
-    imageUrl = upload.secure_url;
-    imageId = upload.public_id;
   }
 
+  // 5️⃣ Upload to Cloudinary (only if no duplicates)
+  const upload = await uploadToCloudinary(processedBuffer, "trainers");
+
+  // 6️⃣ Create trainer
   const trainer = await Trainer.create({
     trainerName,
-    email,
+    email: normalizedEmail,
     designation,
     linkedin,
     facebook,
     instagram,
-    imageUrl,
-    imageId,
-    imageHash,
+    imageUrl: upload.secure_url,
+    imageId: upload.public_id,
+    imageHash: hash,
   });
 
   res

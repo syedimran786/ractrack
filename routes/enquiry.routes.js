@@ -9,18 +9,24 @@ const {
   softDeleteEnquiry,
   restoreEnquiry,
   deleteEnquiry,
+  createWebsiteEnquiry,
 } = require("../controllers/enquiry.controller");
 
 /* =========================================
-   ENQUIRY ROUTES
+   ENQUIRY ROUTES (REST STANDARD)
 ========================================= */
 
-router.post("/add", createEnquiry);
+router.post("/", createEnquiry);
+router.post("/web", createWebsiteEnquiry);
 router.get("/", getEnquiries);
 router.get("/:id", getEnquiryById);
-router.put("/update/:id", updateEnquiry);
+router.patch("/:id", updateEnquiry);
+
+// soft delete & restore
 router.patch("/soft-delete/:id", softDeleteEnquiry);
 router.patch("/restore/:id", restoreEnquiry);
-router.delete("/hard-delete/:id", deleteEnquiry);
+
+// hard delete
+router.delete("/:id", deleteEnquiry);
 
 module.exports = router;

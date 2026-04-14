@@ -1,4 +1,3 @@
-// models/trainer.model.js
 const { Schema, model } = require("mongoose");
 
 const trainerSchema = new Schema(
@@ -30,7 +29,7 @@ const trainerSchema = new Schema(
     facebook: { type: String, trim: true },
     instagram: { type: String, trim: true },
 
-    // Soft delete fields
+    // Soft delete
     isDeleted: { type: Boolean, default: false, index: true },
     deletedAt: { type: Date, default: null },
   },
@@ -38,17 +37,29 @@ const trainerSchema = new Schema(
 );
 
 /* ======================================================
-   INDEXES (Performance)
+   INDEXES (Optimized)
 ====================================================== */
 
-// Unique email
-trainerSchema.index({ email: 1 }, { unique: true });
+// ✅ Unique email ONLY for active (non-deleted) trainers
+trainerSchema.index(
+  { email: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { isDeleted: false },
+  }
+);
 
-// Improve list queries for non-deleted trainers
+// ✅ Prevent duplicate images (only when imageHash exists)
+trainerSchema.index(
+  { imageHash: 1 },
+  {
+    unique: true,
+    sparse: true,
+  }
+);
+
+// ✅ Fast listing
 trainerSchema.index({ isDeleted: 1, createdAt: -1 });
-
-// Improve lookup for duplicate image hash
-trainerSchema.index({ imageHash: 1 });
 
 /* ======================================================
    PRE-SAVE NORMALIZATION

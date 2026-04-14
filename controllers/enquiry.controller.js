@@ -19,14 +19,23 @@ const createEnquiry = asyncHandler(async (req, res) => {
     type,
   } = req.body;
 
-  if (!fullName || !mobile || !email || !courseNeeded || !degree || !stream || !experience || !type) {
+  if (
+    !fullName ||
+    !mobile ||
+    !email ||
+    !courseNeeded ||
+    !degree ||
+    !stream ||
+    !experience ||
+    !type
+  ) {
     throw new ApiError(400, "All required fields must be provided");
   }
 
   // Prevent duplicate enquiry
   const exists = await Enquiry.findOne({
     mobile,
-    courseNeeded: courseNeeded.toLowerCase(),
+    courseNeeded,
     isDeleted: false,
   });
 
@@ -50,12 +59,71 @@ const createEnquiry = asyncHandler(async (req, res) => {
     .status(201)
     .json(new ApiResponse(201, enquiry, "Enquiry created successfully"));
 });
+//! Website Enquiry
+const createWebsiteEnquiry = asyncHandler(async (req, res) => {
+  const {
+    fullName,
+    mobile,
+    email,
+    courseNeeded,
+    degree,
+    stream,
+    experience,
+  } = req.body;
 
+  // ✅ validation
+  if (
+    !fullName ||
+    !mobile ||
+    !email ||
+    !courseNeeded ||
+    !degree ||
+    !stream ||
+    !experience
+  ) {
+    throw new ApiError(400, "All fields are required");
+  }
+
+  // ✅ duplicate check
+  const exists = await Enquiry.findOne({
+    mobile,
+    courseNeeded,
+    isDeleted: false,
+  });
+
+  if (exists) {
+    throw new ApiError(409, "Enquiry already exists for this course");
+  }
+
+  // ✅ create enquiry
+  const enquiry = await Enquiry.create({
+    fullName,
+    mobile,
+    email,
+    courseNeeded,
+    degree,
+    stream,
+    experience,
+
+    // 🔥 controlled fields
+    type: "website",
+    // status will default to "new"
+  });
+
+  return res
+    .status(201)
+    .json(new ApiResponse(201, enquiry, "Website enquiry submitted"));
+});
 /* ======================================================
-   GET ALL ENQUIRIES (filter + pagination ready)
+   GET ALL ENQUIRIES (FILTER + SEARCH + PAGINATION)
 ====================================================== */
 const getEnquiries = asyncHandler(async (req, res) => {
-  const { status, type, isJoined } = req.query;
+  let { status, type, isJoined, search, page = 1, limit = 10 } = req.query;
+
+  page = parseInt(page) || 1;
+  limit = parseInt(limit) || 10;
+
+  const skip = (page - 1) * limit;
 
   const filter = { isDeleted: false };
 
@@ -63,10 +131,33 @@ const getEnquiries = asyncHandler(async (req, res) => {
   if (type) filter.type = type;
   if (isJoined !== undefined) filter.isJoined = isJoined === "true";
 
-  const enquiries = await Enquiry.find(filter).sort({ createdAt: -1 });
+  // 🔥 search
+  if (search) {
+    filter.$or = [
+      { fullName: { $regex: search, $options: "i" } },
+      { mobile: { $regex: search, $options: "i" } },
+      { email: { $regex: search, $options: "i" } },
+    ];
+  }
+
+  const enquiries = await Enquiry.find(filter)
+    .sort({ createdAt: -1 })
+    .skip(skip)
+    .limit(limit);
+
+  const total = await Enquiry.countDocuments(filter);
 
   return res.json(
-    new ApiResponse(200, enquiries, "Enquiries fetched successfully")
+    new ApiResponse(
+      200,
+      {
+        total,
+        page,
+        limit,
+        data: enquiries,
+      },
+      "Enquiries fetched successfully"
+    )
   );
 });
 
@@ -106,6 +197,20 @@ const updateEnquiry = asyncHandler(async (req, res) => {
     isJoined,
   } = req.body;
 
+  // 🔥 duplicate check
+  if (mobile || courseNeeded) {
+    const exists = await Enquiry.findOne({
+      _id: { $ne: id },
+      mobile: mobile ?? enquiry.mobile,
+      courseNeeded: courseNeeded ?? enquiry.courseNeeded,
+      isDeleted: false,
+    });
+
+    if (exists) {
+      throw new ApiError(409, "Duplicate enquiry exists");
+    }
+  }
+
   enquiry.fullName = fullName ?? enquiry.fullName;
   enquiry.mobile = mobile ?? enquiry.mobile;
   enquiry.email = email ?? enquiry.email;
@@ -136,9 +241,7 @@ const softDeleteEnquiry = asyncHandler(async (req, res) => {
 
   if (!enquiry) throw new ApiError(404, "Enquiry not found");
 
-  return res.json(
-    new ApiResponse(200, enquiry, "Enquiry soft deleted")
-  );
+  return res.json(new ApiResponse(200, enquiry, "Enquiry soft deleted"));
 });
 
 /* ======================================================
@@ -172,11 +275,9 @@ const deleteEnquiry = asyncHandler(async (req, res) => {
   );
 });
 
-/* ======================================================
-   EXPORTS
-====================================================== */
 module.exports = {
   createEnquiry,
+  createWebsiteEnquiry,
   getEnquiries,
   getEnquiryById,
   updateEnquiry,

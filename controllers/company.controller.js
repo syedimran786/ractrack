@@ -40,7 +40,6 @@ const createCompany = asyncHandler(async (req, res) => {
   // 3️⃣ Upload image
   const optimized = await optimizeImage(file.buffer);
   const uploaded = await uploadToCloudinary(optimized, "companies");
-
   const company = await Company.create({
     companyName,
     companyImageUrl: uploaded.secure_url,
@@ -62,6 +61,7 @@ const updateCompany = asyncHandler(async (req, res) => {
   if (!company) throw new ApiError(404, "Company not found");
 
   const { companyName } = req.body;
+console.log(companyName);
 
   // 1️⃣ Validate new company name (if provided)
   if (companyName) {
@@ -76,7 +76,6 @@ const updateCompany = asyncHandler(async (req, res) => {
 
     company.companyName = companyName;
   }
-
   // 2️⃣ Handle image update
   if (req.files?.companyImage?.[0]) {
     const file = req.files.companyImage[0];

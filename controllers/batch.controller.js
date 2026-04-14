@@ -44,11 +44,11 @@ const createBatch = asyncHandler(async (req, res) => {
     time,
     isDeleted: false,
   });
-
+console.log(trainer.trainerName);
   if (conflict) {
     throw new ApiError(
       400,
-      `Trainer "${trainer.trainerName}" already has a batch at this time or date`
+      `Trainer ${trainer.trainerName.toUpperCase()} already has a batch at this time or date`
     );
   }
 

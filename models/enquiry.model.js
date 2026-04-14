@@ -6,7 +6,6 @@ const enquirySchema = new Schema(
       type: String,
       required: true,
       trim: true,
-      lowercase: true,
     },
 
     mobile: {
@@ -28,33 +27,28 @@ const enquirySchema = new Schema(
       type: String,
       required: true,
       trim: true,
-      lowercase: true,
     },
 
     degree: {
       type: String,
       required: true,
       trim: true,
-      lowercase: true,
     },
 
     stream: {
       type: String,
       required: true,
       trim: true,
-      lowercase: true,
     },
 
     experience: {
       type: String,
       required: true,
       trim: true,
-      lowercase: true,
     },
 
     status: {
       type: String,
-      required: true,
       enum: ["new", "followup", "interested", "not_interested", "converted"],
       default: "new",
       index: true,
@@ -73,6 +67,18 @@ const enquirySchema = new Schema(
       index: true,
     },
 
+    // 🔥 future-safe
+    isConverted: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
+
+    convertedToStudentId: {
+      type: Schema.Types.ObjectId,
+      ref: "Student",
+    },
+
     // Soft delete
     isDeleted: { type: Boolean, default: false, index: true },
     deletedAt: { type: Date, default: null },
@@ -84,7 +90,13 @@ const enquirySchema = new Schema(
    INDEXES
 ========================================= */
 
-// Prevent duplicate enquiries (same mobile + course)
-enquirySchema.index({ mobile: 1, courseNeeded: 1, isDeleted: 1 });
+// ✅ Correct unique index (no duplicates unless deleted)
+enquirySchema.index(
+  { mobile: 1, courseNeeded: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { isDeleted: false },
+  }
+);
 
 module.exports = model("Enquiry", enquirySchema);
