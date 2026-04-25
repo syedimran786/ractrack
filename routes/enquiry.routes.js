@@ -16,17 +16,17 @@ const {
    ENQUIRY ROUTES (REST STANDARD)
 ========================================= */
 
-router.post("/", createEnquiry);
+router.post("/create", createEnquiry);
 router.post("/web", createWebsiteEnquiry);
 router.get("/", getEnquiries);
 router.get("/:id", getEnquiryById);
-router.patch("/:id", updateEnquiry);
+router.patch("/update/:id", updateEnquiry);
 
 // soft delete & restore
 router.patch("/soft-delete/:id", softDeleteEnquiry);
 router.patch("/restore/:id", restoreEnquiry);
 
 // hard delete
-router.delete("/:id", deleteEnquiry);
+router.delete("/hard-delete/:id", deleteEnquiry);
 
 module.exports = router;

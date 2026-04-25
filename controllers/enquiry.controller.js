@@ -7,7 +7,7 @@ const ApiResponse = require("../utils/ApiResponse");
    CREATE ENQUIRY
 ====================================================== */
 const createEnquiry = asyncHandler(async (req, res) => {
-  const {
+  let {
     fullName,
     mobile,
     email,
@@ -19,6 +19,10 @@ const createEnquiry = asyncHandler(async (req, res) => {
     type,
   } = req.body;
 
+  // 🔥 normalize
+  if (email) email = email.toLowerCase().trim();
+
+  // ✅ validation
   if (
     !fullName ||
     !mobile ||
@@ -32,17 +36,30 @@ const createEnquiry = asyncHandler(async (req, res) => {
     throw new ApiError(400, "All required fields must be provided");
   }
 
-  // Prevent duplicate enquiry
-  const exists = await Enquiry.findOne({
-    mobile,
-    courseNeeded,
+  // 🔥 check existing person (mobile OR email)
+  const existing = await Enquiry.findOne({
+    $or: [{ mobile }, { email }],
     isDeleted: false,
   });
 
-  if (exists) {
-    throw new ApiError(409, "Enquiry already exists for this course");
+  // 🔥 CASE 1: Already exists → UPDATE instead of create
+  if (existing) {
+    existing.fullName = fullName ?? existing.fullName;
+    existing.courseNeeded = courseNeeded; // 🔥 overwrite course
+    existing.degree = degree ?? existing.degree;
+    existing.stream = stream ?? existing.stream;
+    existing.experience = experience ?? existing.experience;
+    existing.status = status ?? existing.status;
+    existing.type = type ?? existing.type;
+
+    await existing.save();
+
+    return res.json(
+      new ApiResponse(200, existing, "Enquiry updated instead of creating new")
+    );
   }
 
+  // 🔥 CASE 2: New enquiry
   const enquiry = await Enquiry.create({
     fullName,
     mobile,
@@ -61,7 +78,7 @@ const createEnquiry = asyncHandler(async (req, res) => {
 });
 //! Website Enquiry
 const createWebsiteEnquiry = asyncHandler(async (req, res) => {
-  const {
+  let {
     fullName,
     mobile,
     email,
@@ -70,6 +87,9 @@ const createWebsiteEnquiry = asyncHandler(async (req, res) => {
     stream,
     experience,
   } = req.body;
+
+  // 🔥 normalize
+  if (email) email = email.toLowerCase().trim();
 
   // ✅ validation
   if (
@@ -84,18 +104,27 @@ const createWebsiteEnquiry = asyncHandler(async (req, res) => {
     throw new ApiError(400, "All fields are required");
   }
 
-  // ✅ duplicate check
-  const exists = await Enquiry.findOne({
-    mobile,
-    courseNeeded,
+  // 🔥 check existing person
+  const existing = await Enquiry.findOne({
+    $or: [{ mobile }, { email }],
     isDeleted: false,
   });
 
-  if (exists) {
-    throw new ApiError(409, "Enquiry already exists for this course");
+  // 🔥 CASE 1: update existing
+  if (existing) {
+    existing.courseNeeded = courseNeeded; // overwrite
+    existing.degree = degree ?? existing.degree;
+    existing.stream = stream ?? existing.stream;
+    existing.experience = experience ?? existing.experience;
+
+    await existing.save();
+
+    return res.json(
+      new ApiResponse(200, existing, "Enquiry updated instead of new entry")
+    );
   }
 
-  // ✅ create enquiry
+  // 🔥 CASE 2: create new
   const enquiry = await Enquiry.create({
     fullName,
     mobile,
@@ -104,10 +133,7 @@ const createWebsiteEnquiry = asyncHandler(async (req, res) => {
     degree,
     stream,
     experience,
-
-    // 🔥 controlled fields
     type: "website",
-    // status will default to "new"
   });
 
   return res
@@ -131,21 +157,23 @@ const getEnquiries = asyncHandler(async (req, res) => {
   if (type) filter.type = type;
   if (isJoined !== undefined) filter.isJoined = isJoined === "true";
 
-  // 🔥 search
+  // 🔥 search (added courseNeeded)
   if (search) {
     filter.$or = [
       { fullName: { $regex: search, $options: "i" } },
       { mobile: { $regex: search, $options: "i" } },
       { email: { $regex: search, $options: "i" } },
+      { courseNeeded: { $regex: search, $options: "i" } }, // ✅ added
     ];
   }
 
-  const enquiries = await Enquiry.find(filter)
-    .sort({ createdAt: -1 })
-    .skip(skip)
-    .limit(limit);
-
-  const total = await Enquiry.countDocuments(filter);
+  const [enquiries, total] = await Promise.all([
+    Enquiry.find(filter)
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit),
+    Enquiry.countDocuments(filter),
+  ]);
 
   return res.json(
     new ApiResponse(
@@ -181,9 +209,6 @@ const getEnquiryById = asyncHandler(async (req, res) => {
 const updateEnquiry = asyncHandler(async (req, res) => {
   const { id } = req.params;
 
-  const enquiry = await Enquiry.findOne({ _id: id, isDeleted: false });
-  if (!enquiry) throw new ApiError(404, "Enquiry not found");
-
   const {
     fullName,
     mobile,
@@ -193,39 +218,60 @@ const updateEnquiry = asyncHandler(async (req, res) => {
     stream,
     experience,
     status,
-    type,
     isJoined,
   } = req.body;
 
-  // 🔥 duplicate check
+  // 🔥 Step 1: Check if enquiry exists
+  const existingEnquiry = await Enquiry.findOne({
+    _id: id,
+    isDeleted: false,
+  });
+
+  if (!existingEnquiry) {
+    throw new ApiError(404, "Enquiry not found");
+  }
+
+  // 🔥 Step 2: Duplicate check (fast)
   if (mobile || courseNeeded) {
-    const exists = await Enquiry.findOne({
+    const duplicate = await Enquiry.exists({
       _id: { $ne: id },
-      mobile: mobile ?? enquiry.mobile,
-      courseNeeded: courseNeeded ?? enquiry.courseNeeded,
+      mobile: mobile ?? existingEnquiry.mobile,
+      courseNeeded: courseNeeded ?? existingEnquiry.courseNeeded,
       isDeleted: false,
     });
 
-    if (exists) {
+    if (duplicate) {
       throw new ApiError(409, "Duplicate enquiry exists");
     }
   }
 
-  enquiry.fullName = fullName ?? enquiry.fullName;
-  enquiry.mobile = mobile ?? enquiry.mobile;
-  enquiry.email = email ?? enquiry.email;
-  enquiry.courseNeeded = courseNeeded ?? enquiry.courseNeeded;
-  enquiry.degree = degree ?? enquiry.degree;
-  enquiry.stream = stream ?? enquiry.stream;
-  enquiry.experience = experience ?? enquiry.experience;
-  enquiry.status = status ?? enquiry.status;
-  enquiry.type = type ?? enquiry.type;
-  enquiry.isJoined = isJoined ?? enquiry.isJoined;
+  // 🔥 Step 3: Build update object (only update provided fields)
+  const updateFields = {};
 
-  await enquiry.save();
+  if (fullName !== undefined) updateFields.fullName = fullName;
+  if (mobile !== undefined) updateFields.mobile = mobile;
+  if (email !== undefined) updateFields.email = email;
+  if (courseNeeded !== undefined) updateFields.courseNeeded = courseNeeded;
+  if (degree !== undefined) updateFields.degree = degree;
+  if (stream !== undefined) updateFields.stream = stream;
+  if (experience !== undefined) updateFields.experience = experience;
+  if (status !== undefined) updateFields.status = status;
+  if (isJoined !== undefined) updateFields.isJoined = isJoined;
+
+  // ❌ intentionally NOT allowing "type" update (controlled internally)
+
+  // 🔥 Step 4: Update in single query
+  const updatedEnquiry = await Enquiry.findOneAndUpdate(
+    { _id: id, isDeleted: false },
+    { $set: updateFields },
+    {
+      new: true,
+      runValidators: true,
+    }
+  );
 
   return res.json(
-    new ApiResponse(200, enquiry, "Enquiry updated successfully")
+    new ApiResponse(200, updatedEnquiry, "Enquiry updated successfully")
   );
 });
 
