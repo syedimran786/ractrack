@@ -25,7 +25,8 @@ const createStudent = asyncHandler(async (req, res) => {
   const file = req.files.photo[0];
   const rawHash = file.fileHash;
 
-  const existingStudent = await Student.findOne({
+  // ✅ Parallel duplicate check
+  const existing = await Student.findOne({
     $or: [
       { email: email?.toLowerCase() },
       { mobile },
@@ -34,18 +35,18 @@ const createStudent = asyncHandler(async (req, res) => {
     ],
   }).lean();
 
-  if (existingStudent) {
-    if (existingStudent.email === email?.toLowerCase())
-      throw new ApiError(409, "Student email already exists");
+  if (existing) {
+    if (existing.email === email?.toLowerCase())
+      throw new ApiError(409, "Email already exists");
 
-    if (existingStudent.mobile === mobile)
-      throw new ApiError(409, "Mobile number already exists");
+    if (existing.mobile === mobile)
+      throw new ApiError(409, "Mobile already exists");
 
-    if (existingStudent.adharNumber === adharNumber)
-      throw new ApiError(409, "Aadhar number already exists");
+    if (existing.adharNumber === adharNumber)
+      throw new ApiError(409, "Aadhar already exists");
 
-    if (existingStudent.photoHash === rawHash)
-      throw new ApiError(409, "Student photo already uploaded");
+    if (existing.photoHash === rawHash)
+      throw new ApiError(409, "Duplicate photo detected");
   }
 
   const optimized = await optimizeImage(file.buffer);
@@ -59,38 +60,70 @@ const createStudent = asyncHandler(async (req, res) => {
     photoHash: rawHash,
   });
 
-  res
-    .status(201)
-    .json(new ApiResponse(201, student, "Student created successfully"));
+  res.status(201).json(
+    new ApiResponse(201, student, "Student created successfully")
+  );
 });
 
 /* ======================================================
    GET ALL STUDENTS
 ====================================================== */
 const getStudents = asyncHandler(async (req, res) => {
-  const page = Number(req.query.page) || 1;
-  const limit = Number(req.query.limit) || 10;
+  let { page = 1, limit = 10, search } = req.query;
+
+  page = Number(page) || 1;
+  limit = Number(limit) || 10;
   const skip = (page - 1) * limit;
 
   const query = buildStudentQuery(req.query);
 
+  // ✅ Always exclude deleted
+  query.isDeleted = false;
+
+  /* ======================================================
+     🔍 GLOBAL SEARCH (name / email / mobile)
+  ====================================================== */
+  if (search) {
+    const searchRegex = new RegExp(search.toLowerCase(), "i");
+
+    const orConditions = [
+      { studentName: searchRegex },
+      { email: searchRegex },
+    ];
+
+    // ✅ If numeric → include mobile search
+    if (!isNaN(search)) {
+      orConditions.push({ mobile: search });
+    }
+
+    query.$or = orConditions;
+  }
+
+  /* ======================================================
+     🔽 SORTING
+  ====================================================== */
   let sort = { createdAt: -1 };
 
   if (req.query.sortByRating || req.query.sortByBatch) {
     sort = {};
+
     if (req.query.sortByRating) {
       sort.mockRating =
         req.query.sortByRating.toLowerCase() === "asc" ? 1 : -1;
     }
+
     if (req.query.sortByBatch) {
       sort.batch =
         req.query.sortByBatch.toLowerCase() === "asc" ? 1 : -1;
     }
   }
 
+  /* ======================================================
+     🚀 PARALLEL EXECUTION
+  ====================================================== */
   const [students, total, stats] = await Promise.all([
     Student.find(query)
-      .select("-photoHash -photoId -companies") // ✅ hide companies for list
+      .select("-photoHash -photoId -companies") // reduce payload
       .skip(skip)
       .limit(limit)
       .sort(sort)
@@ -98,9 +131,15 @@ const getStudents = asyncHandler(async (req, res) => {
 
     Student.countDocuments(query),
 
+    // ✅ Stats should also respect filters (important fix)
     Student.aggregate([
-      { $match: { isDeleted: false } },
-      { $group: { _id: "$isPlaced", count: { $sum: 1 } } },
+      { $match: query },
+      {
+        $group: {
+          _id: "$isPlaced",
+          count: { $sum: 1 },
+        },
+      },
     ]),
   ]);
 
@@ -125,7 +164,13 @@ const getStudents = asyncHandler(async (req, res) => {
    GET STUDENT BY ID
 ====================================================== */
 const getStudentById = asyncHandler(async (req, res) => {
-  const student = await Student.findById(req.params.id).lean();
+  const student = await Student.findOne({
+    _id: req.params.id,
+    isDeleted: false,
+  })
+    .populate("placedCompany", "companyName companyCode")
+    .lean();
+
   if (!student) throw new ApiError(404, "Student not found");
 
   res.json(new ApiResponse(200, student));
@@ -138,7 +183,8 @@ const updateStudent = asyncHandler(async (req, res) => {
   const { id } = req.params;
 
   const student = await Student.findById(id);
-  if (!student) throw new ApiError(404, "Student not found");
+  if (!student || student.isDeleted)
+    throw new ApiError(404, "Student not found");
 
   // ✅ Email uniqueness
   if (req.body.email) {
@@ -146,9 +192,22 @@ const updateStudent = asyncHandler(async (req, res) => {
       email: req.body.email.toLowerCase(),
       _id: { $ne: id },
     });
+
     if (exists) throw new ApiError(409, "Email already exists");
 
     student.email = req.body.email.toLowerCase();
+  }
+
+  // ✅ Mobile uniqueness
+  if (req.body.mobile) {
+    const exists = await Student.findOne({
+      mobile: req.body.mobile,
+      _id: { $ne: id },
+    });
+
+    if (exists) throw new ApiError(409, "Mobile already exists");
+
+    student.mobile = req.body.mobile;
   }
 
   // ✅ Photo update
@@ -162,9 +221,11 @@ const updateStudent = asyncHandler(async (req, res) => {
     });
 
     if (duplicate)
-      throw new ApiError(409, "Student photo already uploaded");
+      throw new ApiError(409, "Duplicate photo detected");
 
-    if (student.photoId) await deleteFromCloudinary(student.photoId);
+    if (student.photoId) {
+      await deleteFromCloudinary(student.photoId);
+    }
 
     const optimized = await optimizeImage(file.buffer);
     const uploaded = await uploadToCloudinary(optimized, "students");
@@ -174,10 +235,9 @@ const updateStudent = asyncHandler(async (req, res) => {
     student.photoHash = rawHash;
   }
 
-  // ✅ SAFE FIELD UPDATE (NO companies overwrite)
+  // ✅ Allowed fields only
   const allowedFields = [
     "studentName",
-    "mobile",
     "adharNumber",
     "fatherName",
     "collegeName",
@@ -207,15 +267,19 @@ const updateStudent = asyncHandler(async (req, res) => {
 
   await student.save();
 
-  res.json(new ApiResponse(200, student, "Student updated successfully"));
+  res.json(
+    new ApiResponse(200, student, "Student updated successfully")
+  );
 });
-
 /* ======================================================
    DELETE / RESTORE
 ====================================================== */
 const softDeleteStudent = asyncHandler(async (req, res) => {
   const student = await Student.findById(req.params.id);
   if (!student) throw new ApiError(404, "Student not found");
+
+  if (student.isDeleted)
+    throw new ApiError(400, "Already deleted");
 
   student.isDeleted = true;
   student.deletedAt = new Date();
@@ -229,6 +293,9 @@ const restoreStudent = asyncHandler(async (req, res) => {
   const student = await Student.findById(req.params.id);
   if (!student) throw new ApiError(404, "Student not found");
 
+  if (!student.isDeleted)
+    throw new ApiError(400, "Student is not deleted");
+
   student.isDeleted = false;
   student.deletedAt = null;
 
@@ -241,11 +308,15 @@ const deleteStudent = asyncHandler(async (req, res) => {
   const student = await Student.findById(req.params.id);
   if (!student) throw new ApiError(404, "Student not found");
 
-  if (student.photoId) await deleteFromCloudinary(student.photoId);
+  if (student.photoId) {
+    await deleteFromCloudinary(student.photoId);
+  }
 
   await student.deleteOne();
 
-  res.json(new ApiResponse(200, null, "Student permanently deleted"));
+  res.json(
+    new ApiResponse(200, null, "Student permanently deleted")
+  );
 });
 
 /* ======================================================

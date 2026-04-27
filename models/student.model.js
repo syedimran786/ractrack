@@ -32,6 +32,7 @@ const studentSchema = new Schema(
       type: String,
       required: [true, "Aadhar number is required"],
       trim: true,
+      unique: true, // ✅ added
       match: [/^\d{12}$/, "Aadhar number must be 12 digits"],
     },
 
@@ -57,32 +58,38 @@ const studentSchema = new Schema(
 
     tenthPercentage: {
       type: Number,
-      required: [true, "10th percentage is required"],
+      required: true,
+      min: 0,
+      max: 100,
     },
 
     pucPercentage: {
       type: Number,
-      required: [true, "PUC percentage is required"],
+      required: true,
+      min: 0,
+      max: 100,
     },
 
     ugDegree: {
       type: String,
-      required: [true, "UG degree is required"],
+      required: true,
     },
 
     ugStream: {
       type: String,
-      required: [true, "UG stream is required"],
+      required: true,
     },
 
     ugPercentage: {
       type: Number,
-      required: [true, "UG percentage is required"],
+      required: true,
+      min: 0,
+      max: 100,
     },
 
     ugYop: {
       type: Number,
-      required: [true, "UG year of passing is required"],
+      required: true,
     },
 
     pgDegree: String,
@@ -92,7 +99,9 @@ const studentSchema = new Schema(
 
     aggregate: {
       type: Number,
-      required: [true, "Aggregate is required"],
+      required: true,
+      min: 0,
+      max: 100,
     },
 
     /* ===============================
@@ -109,8 +118,8 @@ const studentSchema = new Schema(
       type: String,
       trim: true,
       lowercase: true,
+      required: true,
       index: true,
-      required: [true, "Batch is required"],
     },
 
     isPaid: {
@@ -127,67 +136,60 @@ const studentSchema = new Schema(
     },
 
     /* ===============================
-       Placement & Interview Tracking
+       Interview Tracking
     =============================== */
 
-  /* ===============================
-   INTERVIEW TRACKING (UPDATED)
-=============================== */
+    companies: [
+      {
+        companyName: {
+          type: String,
+          required: true,
+          lowercase: true,
+          trim: true,
+        },
 
-/* ===============================
-   INTERVIEW TRACKING (SIMPLIFIED)
-=============================== */
+        companyCode: {
+          type: String,
+          required: true,
+          uppercase: true,
+          trim: true,
+        },
 
-companies: [
-  {
-    companyName: {
-      type: String,
-      required: true,
-      lowercase: true,
-      trim: true,
-    },
+        status: {
+          type: String,
+          enum: [
+            "not scheduled",
+            "scheduled",
+            "attended",
+            "selected",
+            "rejected",
+          ],
+          default: "not scheduled",
+          lowercase: true,
+        },
 
-    companyCode: {
-      type: String,
-      required: true,
-      uppercase: true,
-      trim: true,
-    },
+        addedDate: {
+          type: Date,
+          default: Date.now,
+        },
 
-    status: {
-      type: String,
-      enum: [
-        "not scheduled",
-        "scheduled",
-        "attended",
-        "selected",
-        "rejected",
-      ],
-      default: "not scheduled",
-      lowercase: true,
-    },
+        interviewDate: {
+          type: Date,
+          default: null,
+        },
 
-    addedDate: {
-      type: Date,
-      default: Date.now,
-    },
-
-    interviewDate: {
-      type: Date,
-      default: null, // ✅ instead of "N/A"
-    },
-
-    interviewFeedback: {
-      type: String,
-      default: "",
-      trim: true,
-    },
-  },
-],
+        interviewFeedback: {
+          type: String,
+          default: "",
+          trim: true,
+        },
+      },
+    ],
 
     isPlaced: {
       type: Boolean,
       default: false,
+      index: true,
     },
 
     placedCompany: {
@@ -211,8 +213,8 @@ companies: [
 
     photoHash: {
       type: String,
-      index: true,
       required: true,
+      index: true,
     },
 
     /* ===============================
@@ -231,14 +233,17 @@ companies: [
 );
 
 /* ===============================
-   Indexes
+   Indexes (Optimized)
 =============================== */
 
-studentSchema.index({ "companiesAdded.companyCode": 1 });
-studentSchema.index({ "companiesAttended.companyCode": 1 });
-studentSchema.index({ isPlaced: 1 });
-studentSchema.index({ email: 1 });
-studentSchema.index({ mobile: 1 });
-studentSchema.index({ photoHash: 1 });
+// ✅ Only add if you query by companyCode
+studentSchema.index({ "companies.companyCode": 1 });
+
+// ✅ Compound indexes (important)
+studentSchema.index({ isDeleted: 1, createdAt: -1 });
+studentSchema.index({ isDeleted: 1, batch: 1 });
+studentSchema.index({ isDeleted: 1, isPlaced: 1 });
+
+// ❌ removed wrong + duplicate indexes
 
 module.exports = model("Student", studentSchema);
