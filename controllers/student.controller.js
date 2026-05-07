@@ -254,7 +254,6 @@ const updateStudent = asyncHandler(async (req, res) => {
     "pgYop",
     "aggregate",
     "batch",
-    "isJoined",
     "isPaid",
     "mockRating",
   ];
@@ -319,6 +318,84 @@ const deleteStudent = asyncHandler(async (req, res) => {
   );
 });
 
+
+//!------------
+const updateJoiningStatus = asyncHandler(async (req, res) => {
+  const { studentId } = req.params;
+
+  let { companyCode, isJoined } = req.body;
+
+  // Validate companyCode
+  if (!companyCode || !companyCode.trim()) {
+    throw new ApiError(400, "companyCode is required");
+  }
+
+  // Validate isJoined
+  if (typeof isJoined !== "boolean") {
+    throw new ApiError(400, "isJoined must be true or false");
+  }
+
+  // Normalize companyCode
+  companyCode = companyCode.trim().toUpperCase();
+
+  // Find student
+  const student = await Student.findOne({
+    _id: studentId,
+    isDeleted: false,
+  });
+
+  if (!student) {
+    throw new ApiError(404, "Student not found");
+  }
+
+  // Find company inside student companies
+  const company = student.companies.find(
+    (c) => c.companyCode === companyCode
+  );
+
+  if (!company) {
+    throw new ApiError(
+      404,
+      "Company interview not found for this student"
+    );
+  }
+
+  // Allow joining only if selected
+  if (company.status !== "selected") {
+    throw new ApiError(
+      400,
+      "Student can join only selected companies"
+    );
+  }
+
+  // Update joining status
+  student.isJoined = isJoined;
+
+  // Update placedCompany
+  student.placedCompany = isJoined
+    ? company.companyName
+    : "N/A";
+
+  // Debug logs
+  console.log("Joining Status:", student.isJoined);
+  console.log("Placed Company:", student.placedCompany);
+
+  // Save changes
+  await student.save();
+
+  res.status(200).json(
+    new ApiResponse(
+      200,
+      {
+        student,
+        joinedCompany: isJoined
+          ? company.companyCode
+          : null,
+      },
+      "Joining status updated successfully"
+    )
+  );
+});
 /* ======================================================
    EXPORTS
 ====================================================== */
@@ -330,4 +407,5 @@ module.exports = {
   softDeleteStudent,
   restoreStudent,
   deleteStudent,
+  updateJoiningStatus
 };

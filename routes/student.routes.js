@@ -1,5 +1,6 @@
 const express = require("express");
 const router = express.Router();
+
 const { multiFileUpload } = require("../middlewares/upload");
 
 const {
@@ -10,22 +11,37 @@ const {
   softDeleteStudent,
   restoreStudent,
   deleteStudent,
+  updateJoiningStatus, // ✅ added
 } = require("../controllers/student.controller");
 
-const { updatePlacementInfo } = require("../controllers/student.controller");
+// Create student
+router.post(
+  "/add",
+  multiFileUpload([{ name: "photo", maxCount: 1 }]),
+  createStudent
+);
 
-router.post("/add", multiFileUpload([{ name: "photo", maxCount: 1 }]), createStudent);
-
+// Get students
 router.get("/", getStudents);
 router.get("/:id", getStudentById);
 
-router.put("/update/:id", multiFileUpload([{ name: "photo", maxCount: 1 }]), updateStudent);
+// Update student
+router.put(
+  "/update/:id",
+  multiFileUpload([{ name: "photo", maxCount: 1 }]),
+  updateStudent
+);
 
+// Update joining status
+router.patch("/joining-status/:studentId", updateJoiningStatus);
+
+// Soft delete
 router.patch("/soft-delete/:id", softDeleteStudent);
-router.patch("/restore/:id", restoreStudent);
-router.delete("/hard-delete/:id", deleteStudent);
 
-/* 🔥 Placement / Company update */
-// router.patch("/placement/:id", updatePlacementInfo);
+// Restore
+router.patch("/restore/:id", restoreStudent);
+
+// Hard delete
+router.delete("/hard-delete/:id", deleteStudent);
 
 module.exports = router;

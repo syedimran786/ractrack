@@ -193,9 +193,9 @@ const studentSchema = new Schema(
     },
 
     placedCompany: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "Company",
-    },
+    type: String,
+    default: null,
+},
 
     /* ===============================
        Photo
