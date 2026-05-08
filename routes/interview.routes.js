@@ -51,9 +51,6 @@ router.patch("/:companyCode", updateInterview);
 // 7️⃣ Assign Interview to Student
 router.post("/assign/:studentId", assignInterviewToStudent);
 
-// 8️⃣ Mark as Attended
-router.patch("/attended/:studentId", markAsAttended);
-
 // 9️⃣ Update Status + Feedback
 router.patch("/status/:studentId", updateInterviewStatus);
 

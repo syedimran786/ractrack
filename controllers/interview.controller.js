@@ -366,19 +366,25 @@ const updateInterviewStatus = asyncHandler(async (req, res) => {
    9️⃣ GET INTERVIEW CANDIDATES (🔥 ADVANCED)
 ====================================================== */
 const getInterviewCandidates = asyncHandler(async (req, res) => {
+  console.log("getInterviewCandidates");
+
   let { companyCode } = req.params;
   let { page = 1, limit = 10, status, search } = req.query;
 
   companyCode = companyCode.trim().toUpperCase();
 
   const exists = await Interview.exists({ companyCode });
-  if (!exists) throw new ApiError(404, "Interview not found");
 
-  page = +page || 1;
-  limit = +limit || 10;
+  if (!exists) {
+    throw new ApiError(404, "Interview not found");
+  }
+
+  page = parseInt(page) || 1;
+  limit = parseInt(limit) || 10;
+
   const skip = (page - 1) * limit;
 
-  const pipeline = [
+  const basePipeline = [
     {
       $match: {
         isDeleted: false,
@@ -386,55 +392,93 @@ const getInterviewCandidates = asyncHandler(async (req, res) => {
       },
     },
 
-    { $unwind: "$companies" },
+    {
+      $unwind: "$companies",
+    },
 
     {
       $match: {
         "companies.companyCode": companyCode,
-        ...(status && { "companies.status": status.toLowerCase() }),
+        ...(status && {
+          "companies.status": status.trim().toLowerCase(),
+        }),
       },
     },
 
     ...(search
-      ? [{
-          $match: {
-            $or: [
-              { name: { $regex: search, $options: "i" } },
-              { email: { $regex: search, $options: "i" } },
-              { phone: { $regex: search, $options: "i" } },
-            ],
+      ? [
+          {
+            $match: {
+              $or: [
+                {
+                  studentName: {
+                    $regex: search.trim(),
+                    $options: "i",
+                  },
+                },
+                {
+                  email: {
+                    $regex: search.trim(),
+                    $options: "i",
+                  },
+                },
+                {
+                  mobile: {
+                    $regex: search.trim(),
+                    $options: "i",
+                  },
+                },
+              ],
+            },
           },
-        }]
+        ]
       : []),
+  ];
+
+  const candidatesPipeline = [
+    ...basePipeline,
 
     {
       $project: {
-        name: 1,
+        studentName: 1,
+        mobile: 1,
         email: 1,
-        phone: 1,
         isPlaced: 1,
         interview: "$companies",
       },
     },
 
-    { $sort: { "interview.addedDate": -1 } },
-    { $skip: skip },
-    { $limit: limit },
+    {
+      $sort: {
+        "interview.addedDate": -1,
+      },
+    },
+
+    {
+      $skip: skip,
+    },
+
+    {
+      $limit: limit,
+    },
+  ];
+
+  const countPipeline = [
+    ...basePipeline,
+
+    {
+      $count: "total",
+    },
   ];
 
   const [candidates, countResult] = await Promise.all([
-    Student.aggregate(pipeline),
-    Student.aggregate([
-      { $match: { isDeleted: false, "companies.companyCode": companyCode } },
-      { $unwind: "$companies" },
-      { $match: { "companies.companyCode": companyCode } },
-      { $count: "total" },
-    ]),
+    Student.aggregate(candidatesPipeline),
+    Student.aggregate(countPipeline),
   ]);
 
   const total = countResult[0]?.total || 0;
 
-  res.json(
+  res.status(200).json(
     new ApiResponse(200, {
       total,
       page,
@@ -459,7 +503,6 @@ module.exports = {
   //! Access to HR
   getEligibleStudents,
   assignInterviewToStudent,
-  markAsAttended,
   updateInterviewStatus,
   getInterviewCandidates,
 };
