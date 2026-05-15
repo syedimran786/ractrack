@@ -2,6 +2,8 @@ const mongoose = require("mongoose");
 const Interview = require("../models/interview.model");
 const Student = require("../models/student.model");
 const Company = require("../models/company.model");
+const Placement = require("../models/placement.model");
+
 
 const asyncHandler = require("../utils/asyncHandler");
 const ApiError = require("../utils/ApiError");
@@ -222,22 +224,27 @@ const updateInterviewStatus = asyncHandler(async (req, res) => {
     status,
     interviewFeedback,
     interviewDate,
+    companyDesignation,
   } = req.body;
 
-  // Validate companyCode
+  /* =========================================
+     VALIDATE COMPANY CODE
+  ========================================= */
+
   if (!companyCode || !companyCode.trim()) {
     throw new ApiError(400, "companyCode required");
   }
 
-  // Normalize companyCode
   companyCode = companyCode.trim().toUpperCase();
 
-  // Normalize status
+  /* =========================================
+     NORMALIZE STATUS
+  ========================================= */
+
   const normalizedStatus = status
     ? status.trim().toLowerCase()
     : undefined;
 
-  // Allowed statuses
   const allowedStatuses = [
     "not scheduled",
     "scheduled",
@@ -246,7 +253,6 @@ const updateInterviewStatus = asyncHandler(async (req, res) => {
     "rejected",
   ];
 
-  // Validate status
   if (
     normalizedStatus &&
     !allowedStatuses.includes(normalizedStatus)
@@ -254,7 +260,10 @@ const updateInterviewStatus = asyncHandler(async (req, res) => {
     throw new ApiError(400, "Invalid status");
   }
 
-  // Find student
+  /* =========================================
+     FIND STUDENT
+  ========================================= */
+
   const student = await Student.findOne({
     _id: studentId,
     isDeleted: false,
@@ -264,7 +273,10 @@ const updateInterviewStatus = asyncHandler(async (req, res) => {
     throw new ApiError(404, "Student not found");
   }
 
-  // Find company interview inside student
+  /* =========================================
+     FIND INTERVIEW
+  ========================================= */
+
   const interview = student.companies.find(
     (c) => c.companyCode === companyCode
   );
@@ -276,14 +288,12 @@ const updateInterviewStatus = asyncHandler(async (req, res) => {
     );
   }
 
-  // Debug logs
-  console.log("Incoming Status:", normalizedStatus);
-  console.log("Before isPlaced:", student.isPlaced);
-
-  // Warning message holder
   let warningMessage = null;
 
-  // Check if already selected in other companies
+  /* =========================================
+     MULTIPLE SELECTION WARNING
+  ========================================= */
+
   if (normalizedStatus === "selected") {
     const alreadySelectedCompanies = student.companies.filter(
       (c) =>
@@ -298,56 +308,193 @@ const updateInterviewStatus = asyncHandler(async (req, res) => {
     }
   }
 
-  // Update status
+  /* =========================================
+     UPDATE INTERVIEW STATUS
+  ========================================= */
+
   if (normalizedStatus) {
     interview.status = normalizedStatus;
   }
 
-  // Update feedback
+  /* =========================================
+     UPDATE FEEDBACK
+  ========================================= */
+
   if (interviewFeedback !== undefined) {
-    interview.interviewFeedback = interviewFeedback.trim();
+    interview.interviewFeedback =
+      interviewFeedback.trim();
   }
 
-  // Update interview date
+  /* =========================================
+     UPDATE INTERVIEW DATE
+  ========================================= */
+
   if (interviewDate) {
     interview.interviewDate = interviewDate;
   }
 
-  // If current company selected, update placedCompany
-  if (normalizedStatus === "selected") {
-    const interviewDoc = await Interview.findOne({
-      companyCode,
-    });
+  /* =========================================
+     GET ALL SELECTED COMPANIES
+  ========================================= */
 
-    if (!interviewDoc) {
-      throw new ApiError(
-        404,
-        "Interview not found in master collection"
-      );
-    }
-
-    student.placedCompany = interviewDoc._id;
-  }
-
-  // Check whether student has ANY selected company
   const selectedCompanies = student.companies.filter(
     (c) => c.status === "selected"
   );
 
-  // Update placement status
-  student.isPlaced = selectedCompanies.length > 0;
+  /* =========================================
+     HANDLE SELECTED CASE
+  ========================================= */
 
-  // Remove placedCompany if no company selected
-  if (selectedCompanies.length === 0) {
-    student.placedCompany = null;
+  if (selectedCompanies.length > 0) {
+
+    /* =========================================
+       DETERMINE ACTIVE SELECTED COMPANY
+    ========================================= */
+
+    let latestSelectedCompany;
+
+    // current interview became selected
+    if (interview.status === "selected") {
+      latestSelectedCompany = interview;
+    }
+
+    // current interview changed from selected
+    // to attended/rejected, so fallback
+    else {
+      latestSelectedCompany =
+        selectedCompanies[selectedCompanies.length - 1];
+    }
+
+    /* =========================================
+       UPDATE STUDENT
+    ========================================= */
+
+    student.isPlaced = true;
+
+    student.placedCompany =
+      latestSelectedCompany.companyName;
+
+    /* =========================================
+       FIND COMPANY
+    ========================================= */
+
+    const company = await Company.findOne({
+      companyName:
+        latestSelectedCompany.companyName
+          .trim()
+          .toLowerCase(),
+      isDeleted: false,
+    });
+
+    if (!company) {
+      throw new ApiError(
+        404,
+        `Company '${latestSelectedCompany.companyName}' not found`
+      );
+    }
+
+    /* =========================================
+       FIND EXISTING PLACEMENT
+    ========================================= */
+
+    let placement = await Placement.findOne({
+      studentId: student._id,
+      isDeleted: false,
+    });
+
+    /* =========================================
+       CREATE NEW PLACEMENT
+    ========================================= */
+
+    if (!placement) {
+      placement = await Placement.create({
+        studentId: student._id,
+
+        /* ===============================
+           COMPANY DATA
+        =============================== */
+
+        companyId: company._id,
+
+        companyName:
+          latestSelectedCompany.companyName,
+
+        companyImageUrl:
+          company.companyImageUrl,
+
+        /* ===============================
+           STUDENT SNAPSHOT
+        =============================== */
+
+        fullName: student.studentName,
+
+        ugStream: student.ugStream,
+
+        studentEmail: student.email,
+
+        studentMobile: student.mobile,
+
+        studentImage: student.photoUrl,
+
+        /* ===============================
+           PLACEMENT DATA
+        =============================== */
+
+        companyDesignation:
+          companyDesignation?.trim() ||
+          "not assigned",
+      });
+    }
+
+    /* =========================================
+       UPDATE EXISTING PLACEMENT
+    ========================================= */
+
+    else {
+      placement.companyId = company._id;
+
+      placement.companyName =
+        latestSelectedCompany.companyName;
+
+      placement.companyImageUrl =
+        company.companyImageUrl;
+
+      placement.companyDesignation =
+        companyDesignation?.trim() ||
+        placement.companyDesignation;
+
+      await placement.save();
+    }
   }
 
-  console.log("After isPlaced:", student.isPlaced);
+  /* =========================================
+     NO SELECTED COMPANY
+  ========================================= */
 
-  // Save changes
+  else {
+    student.isPlaced = false;
+
+    student.placedCompany = null;
+
+    /* =========================================
+       DELETE PLACEMENT
+    ========================================= */
+
+    await Placement.findOneAndDelete({
+      studentId: student._id,
+    });
+  }
+
+  /* =========================================
+     SAVE STUDENT
+  ========================================= */
+
   await student.save();
 
-  // Response
+  /* =========================================
+     RESPONSE
+  ========================================= */
+
   res.status(200).json(
     new ApiResponse(
       200,
