@@ -319,26 +319,124 @@ const deleteStudent = asyncHandler(async (req, res) => {
 });
 
 
-//!------------
+// //!------------ old
+// const updateJoiningStatus = asyncHandler(async (req, res) => {
+//   const { studentId } = req.params;
+
+//   let { companyCode, isJoinedToCompany } = req.body;
+
+//   // Validate companyCode
+//   if (!companyCode || !companyCode.trim()) {
+//     throw new ApiError(400, "companyCode is required");
+//   }
+
+//   // Validate isJoinedToCompany
+//   if (typeof isJoinedToCompany !== "boolean") {
+//     throw new ApiError(400, "isJoinedToCompany must be true or false");
+//   }
+
+//   // Normalize companyCode
+//   companyCode = companyCode.trim().toUpperCase();
+
+//   // Find student
+//   const student = await Student.findOne({
+//     _id: studentId,
+//     isDeleted: false,
+//   });
+
+//   if (!student) {
+//     throw new ApiError(404, "Student not found");
+//   }
+
+//   // Find company inside student companies
+//   const company = student.companies.find(
+//     (c) => c.companyCode === companyCode
+//   );
+
+//   if (!company) {
+//     throw new ApiError(
+//       404,
+//       "Company interview not found for this student"
+//     );
+//   }
+
+//   // Allow joining only if selected
+//   if (company.status !== "selected") {
+//     throw new ApiError(
+//       400,
+//       "Student can join only selected companies"
+//     );
+//   }
+
+//   // Update joining status
+//   student.isJoinedToCompany = isJoinedToCompany;
+
+//   // Update placedCompany
+//   student.placedCompany = isJoinedToCompany
+//     ? company.companyName
+//     : "N/A";
+
+//   // Debug logs
+//   console.log("Joining Status:", student.isJoinedToCompany);
+//   console.log("Placed Company:", student.placedCompany);
+
+//   // Save changes
+//   await student.save();
+
+//   res.status(200).json(
+//     new ApiResponse(
+//       200,
+//       {
+//         student,
+//         joinedCompany: isJoinedToCompany
+//           ? company.companyCode
+//           : null,
+//       },
+//       "Joining status updated successfully"
+//     )
+//   );
+// });
+// //!------------
 const updateJoiningStatus = asyncHandler(async (req, res) => {
   const { studentId } = req.params;
 
-  let { companyCode, isJoined } = req.body;
+  let {
+    companyCode,
+    isJoinedToCompany,
+    companyDesignation,
+  } = req.body;
 
-  // Validate companyCode
+  /* =========================================
+     VALIDATIONS
+  ========================================= */
+
   if (!companyCode || !companyCode.trim()) {
     throw new ApiError(400, "companyCode is required");
   }
 
-  // Validate isJoined
-  if (typeof isJoined !== "boolean") {
-    throw new ApiError(400, "isJoined must be true or false");
+  if (typeof isJoinedToCompany !== "boolean") {
+    throw new ApiError(
+      400,
+      "isJoinedToCompany must be true or false"
+    );
   }
 
-  // Normalize companyCode
+  if (
+    isJoinedToCompany === true &&
+    (!companyDesignation || !companyDesignation.trim())
+  ) {
+    throw new ApiError(
+      400,
+      "companyDesignation is required when joining"
+    );
+  }
+
   companyCode = companyCode.trim().toUpperCase();
 
-  // Find student
+  /* =========================================
+     FIND STUDENT
+  ========================================= */
+
   const student = await Student.findOne({
     _id: studentId,
     isDeleted: false,
@@ -348,7 +446,10 @@ const updateJoiningStatus = asyncHandler(async (req, res) => {
     throw new ApiError(404, "Student not found");
   }
 
-  // Find company inside student companies
+  /* =========================================
+     FIND COMPANY IN STUDENT RECORD
+  ========================================= */
+
   const company = student.companies.find(
     (c) => c.companyCode === companyCode
   );
@@ -360,7 +461,10 @@ const updateJoiningStatus = asyncHandler(async (req, res) => {
     );
   }
 
-  // Allow joining only if selected
+  /* =========================================
+     ALLOW JOIN ONLY IF SELECTED
+  ========================================= */
+
   if (company.status !== "selected") {
     throw new ApiError(
       400,
@@ -368,27 +472,101 @@ const updateJoiningStatus = asyncHandler(async (req, res) => {
     );
   }
 
-  // Update joining status
-  student.isJoined = isJoined;
+  /* =========================================
+     UPDATE JOINING STATUS
+  ========================================= */
 
-  // Update placedCompany
-  student.placedCompany = isJoined
+  student.isJoinedToCompany = isJoinedToCompany;
+
+  student.placedCompany = isJoinedToCompany
     ? company.companyName
-    : "N/A";
+    : student.placedCompany;
 
-  // Debug logs
-  console.log("Joining Status:", student.isJoined);
-  console.log("Placed Company:", student.placedCompany);
+  /* =========================================
+     CREATE / UPDATE PLACEMENT
+  ========================================= */
 
-  // Save changes
+  if (isJoinedToCompany) {
+    const companyDoc = await Company.findOne({
+      companyName: company.companyName
+        .trim()
+        .toLowerCase(),
+      isDeleted: false,
+    });
+
+    if (!companyDoc) {
+      throw new ApiError(
+        404,
+        `Company '${company.companyName}' not found`
+      );
+    }
+
+    let placement = await Placement.findOne({
+      studentId: student._id,
+      isDeleted: false,
+    });
+
+    if (!placement) {
+      placement = await Placement.create({
+        studentId: student._id,
+
+        /* Company Snapshot */
+        companyId: companyDoc._id,
+        companyName: company.companyName,
+        companyImageUrl:
+          companyDoc.companyImageUrl,
+
+        /* Student Snapshot */
+        fullName: student.studentName,
+        ugStream: student.ugStream,
+        studentEmail: student.email,
+        studentMobile: student.mobile,
+        studentImage: student.photoUrl,
+
+        /* Placement Data */
+        companyDesignation:
+          companyDesignation.trim(),
+      });
+    } else {
+      placement.companyId = companyDoc._id;
+      placement.companyName =
+        company.companyName;
+      placement.companyImageUrl =
+        companyDoc.companyImageUrl;
+
+      placement.companyDesignation =
+        companyDesignation.trim();
+
+      await placement.save();
+    }
+  }
+
+  /* =========================================
+     REMOVE PLACEMENT IF NOT JOINED
+  ========================================= */
+
+  else {
+    await Placement.findOneAndDelete({
+      studentId: student._id,
+    });
+  }
+
+  /* =========================================
+     SAVE STUDENT
+  ========================================= */
+
   await student.save();
+
+  /* =========================================
+     RESPONSE
+  ========================================= */
 
   res.status(200).json(
     new ApiResponse(
       200,
       {
         student,
-        joinedCompany: isJoined
+        joinedCompany: isJoinedToCompany
           ? company.companyCode
           : null,
       },

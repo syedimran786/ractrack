@@ -61,7 +61,7 @@ const enquirySchema = new Schema(
       index: true,
     },
 
-    isJoined: {
+    isJoinedToCourse: {
       type: Boolean,
       default: false,
       index: true,

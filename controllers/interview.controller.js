@@ -213,9 +213,303 @@ const markAsAttended = asyncHandler(async (req, res) => {
   res.json(new ApiResponse(200, student, "Marked attended"));
 });
 
-/* ======================================================
-   8️⃣ UPDATE INTERVIEW STATUS
+/*  ========================= old=============================
+   8️⃣ UPDATE INTERVIEW STATUS of Student
 ====================================================== */
+// const updateInterviewStatus = asyncHandler(async (req, res) => {
+//   const { studentId } = req.params;
+
+//   let {
+//     companyCode,
+//     status,
+//     interviewFeedback,
+//     interviewDate,
+//     companyDesignation,
+//   } = req.body;
+
+//   /* =========================================
+//      VALIDATE COMPANY CODE
+//   ========================================= */
+
+//   if (!companyCode || !companyCode.trim()) {
+//     throw new ApiError(400, "companyCode required");
+//   }
+
+//   companyCode = companyCode.trim().toUpperCase();
+
+//   /* =========================================
+//      NORMALIZE STATUS
+//   ========================================= */
+
+//   const normalizedStatus = status
+//     ? status.trim().toLowerCase()
+//     : undefined;
+
+//   const allowedStatuses = [
+//     "not scheduled",
+//     "scheduled",
+//     "attended",
+//     "selected",
+//     "rejected",
+//   ];
+
+//   if (
+//     normalizedStatus &&
+//     !allowedStatuses.includes(normalizedStatus)
+//   ) {
+//     throw new ApiError(400, "Invalid status");
+//   }
+
+//   /* =========================================
+//      FIND STUDENT
+//   ========================================= */
+
+//   const student = await Student.findOne({
+//     _id: studentId,
+//     isDeleted: false,
+//   });
+
+//   if (!student) {
+//     throw new ApiError(404, "Student not found");
+//   }
+
+//   /* =========================================
+//      FIND INTERVIEW
+//   ========================================= */
+
+//   const interview = student.companies.find(
+//     (c) => c.companyCode === companyCode
+//   );
+
+//   if (!interview) {
+//     throw new ApiError(
+//       404,
+//       "Interview not found for this student"
+//     );
+//   }
+
+//   let warningMessage = null;
+
+//   /* =========================================
+//      MULTIPLE SELECTION WARNING
+//   ========================================= */
+
+//   if (normalizedStatus === "selected") {
+//     const alreadySelectedCompanies = student.companies.filter(
+//       (c) =>
+//         c.status === "selected" &&
+//         c.companyCode !== companyCode
+//     );
+
+//     if (alreadySelectedCompanies.length > 0) {
+//       warningMessage = `Student already selected in: ${alreadySelectedCompanies
+//         .map((c) => c.companyCode)
+//         .join(", ")}`;
+//     }
+//   }
+
+//   /* =========================================
+//      UPDATE INTERVIEW STATUS
+//   ========================================= */
+
+//   if (normalizedStatus) {
+//     interview.status = normalizedStatus;
+//   }
+
+//   /* =========================================
+//      UPDATE FEEDBACK
+//   ========================================= */
+
+//   if (interviewFeedback !== undefined) {
+//     interview.interviewFeedback =
+//       interviewFeedback.trim();
+//   }
+
+//   /* =========================================
+//      UPDATE INTERVIEW DATE
+//   ========================================= */
+
+//   if (interviewDate) {
+//     interview.interviewDate = interviewDate;
+//   }
+
+//   /* =========================================
+//      GET ALL SELECTED COMPANIES
+//   ========================================= */
+
+//   const selectedCompanies = student.companies.filter(
+//     (c) => c.status === "selected"
+//   );
+
+//   /* =========================================
+//      HANDLE SELECTED CASE
+//   ========================================= */
+
+//   if (selectedCompanies.length > 0) {
+
+//     /* =========================================
+//        DETERMINE ACTIVE SELECTED COMPANY
+//     ========================================= */
+
+//     let latestSelectedCompany;
+
+//     // current interview became selected
+//     if (interview.status === "selected") {
+//       latestSelectedCompany = interview;
+//     }
+
+//     // current interview changed from selected
+//     // to attended/rejected, so fallback
+//     else {
+//       latestSelectedCompany =
+//         selectedCompanies[selectedCompanies.length - 1];
+//     }
+
+//     /* =========================================
+//        UPDATE STUDENT
+//     ========================================= */
+
+//     student.isPlaced = true;
+
+//     student.placedCompany =
+//       latestSelectedCompany.companyName;
+
+//     /* =========================================
+//        FIND COMPANY
+//     ========================================= */
+
+//     const company = await Company.findOne({
+//       companyName:
+//         latestSelectedCompany.companyName
+//           .trim()
+//           .toLowerCase(),
+//       isDeleted: false,
+//     });
+
+//     if (!company) {
+//       throw new ApiError(
+//         404,
+//         `Company '${latestSelectedCompany.companyName}' not found`
+//       );
+//     }
+
+//     /* =========================================
+//        FIND EXISTING PLACEMENT
+//     ========================================= */
+
+//     let placement = await Placement.findOne({
+//       studentId: student._id,
+//       isDeleted: false,
+//     });
+
+//     /* =========================================
+//        CREATE NEW PLACEMENT
+//     ========================================= */
+
+//     if (!placement) {
+//       placement = await Placement.create({
+//         studentId: student._id,
+
+//         /* ===============================
+//            COMPANY DATA
+//         =============================== */
+
+//         companyId: company._id,
+
+//         companyName:
+//           latestSelectedCompany.companyName,
+
+//         companyImageUrl:
+//           company.companyImageUrl,
+
+//         /* ===============================
+//            STUDENT SNAPSHOT
+//         =============================== */
+
+//         fullName: student.studentName,
+
+//         ugStream: student.ugStream,
+
+//         studentEmail: student.email,
+
+//         studentMobile: student.mobile,
+
+//         studentImage: student.photoUrl,
+
+//         /* ===============================
+//            PLACEMENT DATA
+//         =============================== */
+
+//         companyDesignation:
+//           companyDesignation?.trim() ||
+//           "not assigned",
+//       });
+//     }
+
+//     /* =========================================
+//        UPDATE EXISTING PLACEMENT
+//     ========================================= */
+
+//     else {
+//       placement.companyId = company._id;
+
+//       placement.companyName =
+//         latestSelectedCompany.companyName;
+
+//       placement.companyImageUrl =
+//         company.companyImageUrl;
+
+//       placement.companyDesignation =
+//         companyDesignation?.trim() ||
+//         placement.companyDesignation;
+
+//       await placement.save();
+//     }
+//   }
+
+//   /* =========================================
+//      NO SELECTED COMPANY
+//   ========================================= */
+
+//   else {
+//     student.isPlaced = false;
+
+//     student.placedCompany = null;
+
+//     /* =========================================
+//        DELETE PLACEMENT
+//     ========================================= */
+
+//     await Placement.findOneAndDelete({
+//       studentId: student._id,
+//     });
+//   }
+
+//   /* =========================================
+//      SAVE STUDENT
+//   ========================================= */
+
+//   await student.save();
+
+//   /* =========================================
+//      RESPONSE
+//   ========================================= */
+
+//   res.status(200).json(
+//     new ApiResponse(
+//       200,
+//       {
+//         student,
+//         warning: warningMessage,
+//         selectedCompanies: selectedCompanies.map(
+//           (c) => c.companyName
+//         ),
+//       },
+//       "Interview status updated successfully"
+//     )
+//   );
+// });
+//!-----------------------------------
 const updateInterviewStatus = asyncHandler(async (req, res) => {
   const { studentId } = req.params;
 
@@ -224,22 +518,13 @@ const updateInterviewStatus = asyncHandler(async (req, res) => {
     status,
     interviewFeedback,
     interviewDate,
-    companyDesignation,
   } = req.body;
-
-  /* =========================================
-     VALIDATE COMPANY CODE
-  ========================================= */
 
   if (!companyCode || !companyCode.trim()) {
     throw new ApiError(400, "companyCode required");
   }
 
   companyCode = companyCode.trim().toUpperCase();
-
-  /* =========================================
-     NORMALIZE STATUS
-  ========================================= */
 
   const normalizedStatus = status
     ? status.trim().toLowerCase()
@@ -260,10 +545,6 @@ const updateInterviewStatus = asyncHandler(async (req, res) => {
     throw new ApiError(400, "Invalid status");
   }
 
-  /* =========================================
-     FIND STUDENT
-  ========================================= */
-
   const student = await Student.findOne({
     _id: studentId,
     isDeleted: false,
@@ -272,10 +553,6 @@ const updateInterviewStatus = asyncHandler(async (req, res) => {
   if (!student) {
     throw new ApiError(404, "Student not found");
   }
-
-  /* =========================================
-     FIND INTERVIEW
-  ========================================= */
 
   const interview = student.companies.find(
     (c) => c.companyCode === companyCode
@@ -289,10 +566,6 @@ const updateInterviewStatus = asyncHandler(async (req, res) => {
   }
 
   let warningMessage = null;
-
-  /* =========================================
-     MULTIPLE SELECTION WARNING
-  ========================================= */
 
   if (normalizedStatus === "selected") {
     const alreadySelectedCompanies = student.companies.filter(
@@ -308,192 +581,45 @@ const updateInterviewStatus = asyncHandler(async (req, res) => {
     }
   }
 
-  /* =========================================
-     UPDATE INTERVIEW STATUS
-  ========================================= */
-
   if (normalizedStatus) {
     interview.status = normalizedStatus;
   }
 
-  /* =========================================
-     UPDATE FEEDBACK
-  ========================================= */
-
   if (interviewFeedback !== undefined) {
     interview.interviewFeedback =
-      interviewFeedback.trim();
+      interviewFeedback?.trim();
   }
-
-  /* =========================================
-     UPDATE INTERVIEW DATE
-  ========================================= */
 
   if (interviewDate) {
     interview.interviewDate = interviewDate;
   }
 
-  /* =========================================
-     GET ALL SELECTED COMPANIES
-  ========================================= */
-
   const selectedCompanies = student.companies.filter(
     (c) => c.status === "selected"
   );
 
-  /* =========================================
-     HANDLE SELECTED CASE
-  ========================================= */
-
   if (selectedCompanies.length > 0) {
-
-    /* =========================================
-       DETERMINE ACTIVE SELECTED COMPANY
-    ========================================= */
-
     let latestSelectedCompany;
 
-    // current interview became selected
     if (interview.status === "selected") {
       latestSelectedCompany = interview;
-    }
-
-    // current interview changed from selected
-    // to attended/rejected, so fallback
-    else {
+    } else {
       latestSelectedCompany =
         selectedCompanies[selectedCompanies.length - 1];
     }
 
-    /* =========================================
-       UPDATE STUDENT
-    ========================================= */
-
     student.isPlaced = true;
-
     student.placedCompany =
       latestSelectedCompany.companyName;
-
-    /* =========================================
-       FIND COMPANY
-    ========================================= */
-
-    const company = await Company.findOne({
-      companyName:
-        latestSelectedCompany.companyName
-          .trim()
-          .toLowerCase(),
-      isDeleted: false,
-    });
-
-    if (!company) {
-      throw new ApiError(
-        404,
-        `Company '${latestSelectedCompany.companyName}' not found`
-      );
-    }
-
-    /* =========================================
-       FIND EXISTING PLACEMENT
-    ========================================= */
-
-    let placement = await Placement.findOne({
-      studentId: student._id,
-      isDeleted: false,
-    });
-
-    /* =========================================
-       CREATE NEW PLACEMENT
-    ========================================= */
-
-    if (!placement) {
-      placement = await Placement.create({
-        studentId: student._id,
-
-        /* ===============================
-           COMPANY DATA
-        =============================== */
-
-        companyId: company._id,
-
-        companyName:
-          latestSelectedCompany.companyName,
-
-        companyImageUrl:
-          company.companyImageUrl,
-
-        /* ===============================
-           STUDENT SNAPSHOT
-        =============================== */
-
-        fullName: student.studentName,
-
-        ugStream: student.ugStream,
-
-        studentEmail: student.email,
-
-        studentMobile: student.mobile,
-
-        studentImage: student.photoUrl,
-
-        /* ===============================
-           PLACEMENT DATA
-        =============================== */
-
-        companyDesignation:
-          companyDesignation?.trim() ||
-          "not assigned",
-      });
-    }
-
-    /* =========================================
-       UPDATE EXISTING PLACEMENT
-    ========================================= */
-
-    else {
-      placement.companyId = company._id;
-
-      placement.companyName =
-        latestSelectedCompany.companyName;
-
-      placement.companyImageUrl =
-        company.companyImageUrl;
-
-      placement.companyDesignation =
-        companyDesignation?.trim() ||
-        placement.companyDesignation;
-
-      await placement.save();
-    }
-  }
-
-  /* =========================================
-     NO SELECTED COMPANY
-  ========================================= */
-
-  else {
+  } else {
     student.isPlaced = false;
-
     student.placedCompany = null;
 
-    /* =========================================
-       DELETE PLACEMENT
-    ========================================= */
-
-    await Placement.findOneAndDelete({
-      studentId: student._id,
-    });
+    // reset joining if no selected company exists
+    student.isJoinedToCompany = false;
   }
 
-  /* =========================================
-     SAVE STUDENT
-  ========================================= */
-
   await student.save();
-
-  /* =========================================
-     RESPONSE
-  ========================================= */
 
   res.status(200).json(
     new ApiResponse(
@@ -509,6 +635,7 @@ const updateInterviewStatus = asyncHandler(async (req, res) => {
     )
   );
 });
+
 /* ======================================================
    9️⃣ GET INTERVIEW CANDIDATES (🔥 ADVANCED)
 ====================================================== */

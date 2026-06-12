@@ -144,7 +144,7 @@ const createWebsiteEnquiry = asyncHandler(async (req, res) => {
    GET ALL ENQUIRIES (FILTER + SEARCH + PAGINATION)
 ====================================================== */
 const getEnquiries = asyncHandler(async (req, res) => {
-  let { status, type, isJoined, search, page = 1, limit = 10 } = req.query;
+  let { status, type, isJoinedToCourse, search, page = 1, limit = 10 } = req.query;
 
   page = parseInt(page) || 1;
   limit = parseInt(limit) || 10;
@@ -155,7 +155,7 @@ const getEnquiries = asyncHandler(async (req, res) => {
 
   if (status) filter.status = status;
   if (type) filter.type = type;
-  if (isJoined !== undefined) filter.isJoined = isJoined === "true";
+  if (isJoinedToCourse !== undefined) filter.isJoinedToCourse = isJoinedToCourse === "true";
 
   // 🔥 search (added courseNeeded)
   if (search) {
@@ -218,7 +218,7 @@ const updateEnquiry = asyncHandler(async (req, res) => {
     stream,
     experience,
     status,
-    isJoined,
+    isJoinedToCourse,
   } = req.body;
 
   // 🔥 Step 1: Check if enquiry exists
@@ -256,7 +256,7 @@ const updateEnquiry = asyncHandler(async (req, res) => {
   if (stream !== undefined) updateFields.stream = stream;
   if (experience !== undefined) updateFields.experience = experience;
   if (status !== undefined) updateFields.status = status;
-  if (isJoined !== undefined) updateFields.isJoined = isJoined;
+  if (isJoinedToCourse !== undefined) updateFields.isJoinedToCourse = isJoinedToCourse;
 
   // ❌ intentionally NOT allowing "type" update (controlled internally)
 

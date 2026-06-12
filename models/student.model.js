@@ -108,7 +108,7 @@ const studentSchema = new Schema(
        Business Fields
     =============================== */
 
-    isJoined: {
+    isJoinedToCourse: {
       type: Boolean,
       default: false,
       index: true,
@@ -138,7 +138,11 @@ const studentSchema = new Schema(
     /* ===============================
        Interview Tracking
     =============================== */
-
+     isJoinedToCompany: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
     companies: [
       {
         companyName: {

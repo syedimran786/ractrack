@@ -81,7 +81,7 @@ const createPayment = asyncHandler(async (req, res) => {
   });
 
   // 🔄 Update student flags
-  student.isJoined = true;
+  student.isJoinedToCourse = true;
   if (balanceFee === 0) student.isPaid = true;
   await student.save();
 
