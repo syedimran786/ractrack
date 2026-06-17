@@ -3,12 +3,26 @@ const router = express.Router();
 
 const {
   createPayment,
-  getPaymentsByStudent,
-  getReceiptByNumber,
+  getPayments,
+  getPaymentById,
+  updatePayment,
+  softDeletePayment,
+  restorePayment,
+  deletePayment,
 } = require("../controllers/payment.controller");
 
 router.post("/add", createPayment);
-router.get("/student/:studentId", getPaymentsByStudent);
-router.get("/receipt/:receiptNumber", getReceiptByNumber);
+
+router.get("/", getPayments);
+
+router.get("/:id", getPaymentById);
+
+router.put("/update/:id", updatePayment);
+
+router.patch("/soft-delete/:id", softDeletePayment);
+
+router.patch("/restore/:id", restorePayment);
+
+router.delete("/hard-delete/:id", deletePayment);
 
 module.exports = router;

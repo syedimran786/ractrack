@@ -16,6 +16,10 @@ const studentRoutes = require("./routes/student.routes");
 const companyRoutes = require("./routes/company.routes");
 const enquiryRoutes = require("./routes/enquiry.routes");
 const interviewRoutes = require("./routes/interview.routes");
+const paymentRoutes = require("./routes/payment.routes");
+const paymentTransactionRoutes = require("./routes/paymentTransaction.routes");
+
+
 
 
 
@@ -82,6 +86,8 @@ app.use("/api/placements", placementRoutes);
 app.use("/api/companies", companyRoutes);
 app.use("/api/enquiries", enquiryRoutes);
 app.use("/api/interviews", interviewRoutes);
+app.use("/api/payments", paymentRoutes);
+app.use("/api/payment-transactions",paymentTransactionRoutes);
 
 
 

@@ -6,6 +6,14 @@ const paymentSchema = new Schema(
       type: Schema.Types.ObjectId,
       ref: "Student",
       required: true,
+      unique: true,
+      index: true,
+    },
+
+    mobile: {
+      type: String,
+      required: true,
+      trim: true,
       index: true,
     },
 
@@ -16,13 +24,7 @@ const paymentSchema = new Schema(
       lowercase: true,
     },
 
-    mobile: {
-      type: String,
-      required: true,
-      trim: true,
-    },
-
-    email: {
+    batch: {
       type: String,
       required: true,
       trim: true,
@@ -30,76 +32,56 @@ const paymentSchema = new Schema(
       index: true,
     },
 
-    courseName: {
-      type: String,
-      enum: ["java fullstack", "mern stack", "python fullstack", "reactjs"],
-      required: true,
-      lowercase: true,
-      index: true,
-    },
-
-    batchCode: {
-      type: String,
-      required: true,
-      trim: true,
-      lowercase: true,
-      index: true,
-    },
-
-    totalFee: {
+    // GST Inclusive Fee
+    courseFee: {
       type: Number,
       required: true,
       min: 0,
     },
 
-    paidFee: {
+    gstPercentage: {
+      type: Number,
+      default: 18,
+      min: 0,
+    },
+
+    taxableAmount: {
       type: Number,
       required: true,
       min: 0,
     },
 
-    cgst: {
+    gstAmount: {
       type: Number,
       required: true,
       min: 0,
     },
 
-    sgst: {
+    amountPaid: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+
+    pendingAmount: {
       type: Number,
       required: true,
       min: 0,
     },
 
-    balanceFee: {
-      type: Number,
-      required: true,
-      min: 0,
+    paymentStatus: {
+      type: String,
+      enum: ["pending", "partial", "paid"],
+      default: "pending",
       index: true,
     },
-
-    companyGSTNumber: {
+    lastPaymentDate: {
+    type: Date,
+    default: null,
+  },
+    notes: {
       type: String,
-      required: true,
-      uppercase: true,
-      trim: true,
-      index: true,
-    },
-
-    receiptNumber: {
-      type: String,
-      unique: true,
-      index: true,
-    },
-
-    paymentMode: {
-      type: String,
-      enum: ["cash", "upi", "card", "bank transfer"],
-      required: true,
-      lowercase: true,
-    },
-
-    transactionRef: {
-      type: String,
+      default: "",
       trim: true,
     },
 
@@ -109,9 +91,37 @@ const paymentSchema = new Schema(
       index: true,
     },
 
-    deletedAt: Date,
+    deletedAt: {
+      type: Date,
+      default: null,
+    },
   },
-  { timestamps: true }
+  {
+    timestamps: true,
+  }
 );
+
+/* ==========================
+   Indexes
+========================== */
+
+paymentSchema.index({
+  mobile: 1,
+  isDeleted: 1,
+});
+
+paymentSchema.index({
+  paymentStatus: 1,
+  isDeleted: 1,
+});
+
+paymentSchema.index({
+  batch: 1,
+  paymentStatus: 1,
+});
+
+paymentSchema.index({
+  createdAt: -1,
+});
 
 module.exports = model("Payment", paymentSchema);
