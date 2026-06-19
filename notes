@@ -1,0 +1,41 @@
+router.post(
+  "/companies",
+  verifyJWT,
+  requirePasswordChange,
+  createCompany
+);
+
+
+router.post(
+  "/company",
+  verifyJWT,
+  authorizeRoles("admin"),
+  createCompany
+);
+
+multiple roles
+
+authorizeRoles(
+  "admin",
+  "hr",
+  "trainer"
+)
+
+The only routes that should work before password change are:
+POST /auth/login
+POST /auth/change-first-password
+POST /auth/logout
+GET  /auth/me
+
+
+Login
+  ↓
+user.mustChangePassword === true
+  ↓
+Redirect to Change Password Page
+  ↓
+POST /auth/change-first-password
+  ↓
+mustChangePassword = false
+  ↓
+Redirect to Dashboard

@@ -1,27 +1,57 @@
 const jwt = require("jsonwebtoken");
-const ApiError = require("../utils/ApiError");
+
 const User = require("../models/user.model");
 
-const protect = async (req, res, next) => {
-  const token = req.cookies?.token;
+const asyncHandler = require("../utils/asyncHandler");
+const ApiError = require("../utils/ApiError");
 
-  if (!token) {
-    throw new ApiError(401, "Not authenticated");
-  }
+const verifyJWT = asyncHandler(
+  async (req, res, next) => {
+    const token =
+      req.cookies?.accessToken ||
+      req.header("Authorization")?.replace(
+        "Bearer ",
+        ""
+      );
 
-  try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-
-    const user = await User.findById(decoded.id);
-    if (!user || !user.isActive) {
-      throw new ApiError(401, "User is inactive or does not exist");
+    if (!token) {
+      throw new ApiError(
+        401,
+        "Unauthorized request"
+      );
     }
 
-    req.user = user; // 🔥 attach logged-in user
-    next();
-  } catch (error) {
-    throw new ApiError(401, "Authentication failed");
-  }
-};
+    let decodedToken;
 
-module.exports = protect;
+    try {
+      decodedToken = jwt.verify(
+        token,
+        process.env.ACCESS_TOKEN_SECRET
+      );
+    } catch (error) {
+      throw new ApiError(
+        401,
+        "Invalid access token"
+      );
+    }
+
+    const user = await User.findOne({
+      _id: decodedToken.id,
+      isDeleted: false,
+      isActive: true,
+    }).select("-password -refreshToken");
+
+    if (!user) {
+      throw new ApiError(
+        401,
+        "User not found"
+      );
+    }
+
+    req.user = user;
+
+    next();
+  }
+);
+
+module.exports = verifyJWT;

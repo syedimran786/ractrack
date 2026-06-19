@@ -1,142 +1,439 @@
 const User = require("../models/user.model");
-const asyncHandler = require("../middlewares/asyncHandler");
+
+const asyncHandler = require("../utils/asyncHandler");
 const ApiError = require("../utils/ApiError");
 const ApiResponse = require("../utils/ApiResponse");
-const { hashPassword, comparePassword } = require("../utils/passwordUtils");
-const { generateToken } = require("../utils/tokenUtils");
 
-/* ======================================================
-   ADD USER
-====================================================== */
+const {hashPassword} = require("../utils/passwordUtils");
+const sendMail = require("../utils/sendMail");
+
+const userCredentialsTemplate = require(
+  "../utils/emailTemplates/userCredentialsTemplate"
+);
 const createUser = asyncHandler(async (req, res) => {
-  const { username, email, password, type } = req.body;
+  const {
+    fullname,
+    email,
+    password,
+    role,
+  } = req.body;
 
-  if (!username || !email || !password || !type) {
-    throw new ApiError(400, "All fields are required");
+  if (!fullname?.trim()) {
+    throw new ApiError(
+      400,
+      "fullname is required"
+    );
   }
 
-  const existingUser = await User.findOne({ email: email.toLowerCase() });
-  if (existingUser) throw new ApiError(409, "User already exists");
+  if (!email?.trim()) {
+    throw new ApiError(
+      400,
+      "email is required"
+    );
+  }
 
-  const hashedPassword = await hashPassword(password);
+  if (!password?.trim()) {
+    throw new ApiError(
+      400,
+      "password is required"
+    );
+  }
+
+  if (!role) {
+    throw new ApiError(
+      400,
+      "role is required"
+    );
+  }
+
+  const existingUser =
+    await User.findOne({
+      email: email.toLowerCase(),
+      isDeleted: false,
+    });
+
+  if (existingUser) {
+    throw new ApiError(
+      409,
+      "User already exists with this email"
+    );
+  }
+
+  const hashedPassword =
+    await hashPassword(password);
 
   const user = await User.create({
-    username: username.toLowerCase(),
+    fullname: fullname.trim(),
     email: email.toLowerCase(),
     password: hashedPassword,
-    type,
+    role,
   });
 
-  res.status(201).json(
-    new ApiResponse(201, user, "User created successfully")
+  // Send Credentials Mail
+  try {
+    await sendMail({
+      to: user.email,
+      subject:
+        "Your Student Management Account Credentials",
+
+      html: userCredentialsTemplate({
+        fullname: user.fullname,
+        email: user.email,
+        password,
+        role: user.role,
+      }),
+    });
+  } catch (error) {
+    console.error(
+      "Email sending failed:",
+      error.message
+    );
+  }
+
+  const createdUser =
+    await User.findById(
+      user._id
+    ).select("-password");
+
+  return res.status(201).json(
+    new ApiResponse(
+      201,
+      createdUser,
+      "User created successfully and credentials sent to email"
+    )
   );
 });
 
-/* ======================================================
-   LOGIN USER
-====================================================== */
-const loginUser = asyncHandler(async (req, res) => {
-  const { email, password } = req.body;
-
-  if (!email || !password) {
-    throw new ApiError(400, "Email and password are required");
-  }
-
-  const user = await User.findOne({
-    email: email.toLowerCase(),
-    isActive: true,
-  }).select("+password");
-
-  // ❌ User not found
-  if (!user) {
-    throw new ApiError(404, "User does not exist");
-  }
-
-  const isMatch = await comparePassword(password, user.password);
-
-  // ❌ Password mismatch
-  if (!isMatch) {
-    throw new ApiError(401, "Incorrect password");
-  }
-
-  const token = generateToken(user);
-
-  res
-    .cookie("token", token, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "strict",
-      maxAge: 24 * 60 * 60 * 1000, // 1 day
-    })
-    .json(new ApiResponse(200, user, "Login successful"));
-});
-
-/* ======================================================
-   LOGOUT USER
-====================================================== */
-const logoutUser = asyncHandler(async (req, res) => {
-  res
-    .clearCookie("token")
-    .json(new ApiResponse(200, null, "Logged out successfully"));
-});
-
-/* ======================================================
-   GET ALL USERS
-====================================================== */
 const getUsers = asyncHandler(async (req, res) => {
-  const users = await User.find().sort({ createdAt: -1 }).lean();
-  res.json(new ApiResponse(200, users));
+  const {
+    search,
+    role,
+    isActive,
+    page = 1,
+    limit = 10,
+  } = req.query;
+
+  const query = {isDeleted: false,};
+
+  // Search by fullname or email
+  if (search?.trim()) {
+    query.$or = [
+      {
+        fullname: {
+          $regex: search.trim(),
+          $options: "i",
+        },
+      },
+      {
+        email: {
+          $regex: search.trim(),
+          $options: "i",
+        },
+      },
+    ];
+  }
+
+  // Filter by role
+  if (role) {
+    query.role = role;
+  }
+
+  // Filter by status
+  if (isActive !== undefined) {
+    query.isActive = isActive === "true";
+  }
+
+  const pageNumber = Math.max(
+    1,
+    Number(page) || 1
+  );
+
+  const limitNumber = Math.max(
+    1,
+    Number(limit) || 10
+  );
+
+  const skip =
+    (pageNumber - 1) * limitNumber;
+
+  const [users, totalUsers] =
+    await Promise.all([
+      User.find(query)
+        .select("-password")
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limitNumber)
+        .lean(),
+
+      User.countDocuments(query),
+    ]);
+
+  return res.status(200).json(
+    new ApiResponse(
+      200,
+      {
+        users,
+        pagination: {
+          totalUsers,
+          currentPage: pageNumber,
+          totalPages: Math.ceil(
+            totalUsers / limitNumber
+          ),
+          limit: limitNumber,
+        },
+      },
+      "Users fetched successfully"
+    )
+  );
 });
 
-/* ======================================================
-   GET USER BY ID
-====================================================== */
 const getUserById = asyncHandler(async (req, res) => {
-  const user = await User.findById(req.params.id).lean();
-  if (!user) throw new ApiError(404, "User not found");
+  const { id } = req.params;
 
-  res.json(new ApiResponse(200, user));
+const user = await User.findOne({
+  _id: id,
+  isDeleted: false,
+})
+  .select("-password")
+  .lean();
+
+  if (!user) {
+    throw new ApiError(404,"User not found");
+  }
+
+  return res.status(200).json(
+    new ApiResponse(200,user,"User fetched successfully"));
 });
 
-/* ======================================================
-   UPDATE USER
-====================================================== */
 const updateUser = asyncHandler(async (req, res) => {
-  const user = await User.findById(req.params.id);
-  if (!user) throw new ApiError(404, "User not found");
+  const { id } = req.params;
 
-  Object.keys(req.body).forEach((key) => {
-    if (req.body[key] !== undefined && key !== "password") {
-      user[key] = req.body[key];
-    }
+  const {
+    fullname,
+    email,
+    role,
+  } = req.body;
+
+const user = await User.findOne({
+  _id: id,
+  isDeleted: false,
+});
+
+  if (!user) {
+    throw new ApiError(404,"User not found");
+  }
+
+  if (email && email.toLowerCase() !== user.email) {
+   const existingUser =
+  await User.findOne({
+    email: email.toLowerCase(),
+    _id: { $ne: id },
+    isDeleted: false,
   });
 
+    if (existingUser) {
+      throw new ApiError(409,"Email already exists");
+    }
+
+    user.email = email.toLowerCase();
+  }
+
+  if (fullname?.trim()) {
+    user.fullname = fullname.trim();
+  }
+
+  if (role) {
+    user.role = role;
+  }
+
   await user.save();
-  res.json(new ApiResponse(200, user, "User updated successfully"));
+
+  const updatedUser =
+    await User.findById(id)
+      .select("-password")
+      .lean();
+
+  return res
+    .status(200)
+    .json(new ApiResponse(200, updatedUser, "User updated successfully"));
 });
 
-/* ======================================================
-   SOFT DELETE USER
-====================================================== */
+const updateUserStatus =asyncHandler(async (req, res) => {
+    const { id } = req.params;
+
+    const { isActive } = req.body;
+
+    if (typeof isActive !=="boolean") {
+      throw new ApiError(400,"isActive must be true or false");
+    }
+
+    const user =
+     await User.findOneAndUpdate({
+    _id: id,
+    isDeleted: false,
+  },
+  { isActive },
+  {
+    new: true,
+    runValidators: true,
+  }).select("-password").lean();
+
+    if (!user) {
+      throw new ApiError(404,"User not found");
+    }
+
+    return res.status(200).json(
+      new ApiResponse(200,user,`User ${isActive? "activated": "deactivated"} successfully`));
+  });
+
+  const changePassword = asyncHandler(
+  async (req, res) => {
+    const { id } = req.params;
+
+    const {
+      oldPassword,
+      newPassword,
+    } = req.body;
+
+    if (!oldPassword?.trim()) {
+      throw new ApiError(400,"oldPassword is required");
+    }
+
+    if (!newPassword?.trim()) {
+      throw new ApiError( 400, "newPassword is required");
+    }
+
+    const user =await User.findById(id).select("+password");
+
+    if (!user) {
+      throw new ApiError(404,"User not found");
+    }
+
+    const isPasswordValid =
+      await comparePassword(
+        oldPassword,
+        user.password
+      );
+
+    if (!isPasswordValid) {
+      throw new ApiError(400,"Old password is incorrect");
+    }
+
+    user.password =await hashPassword(newPassword);
+
+    await user.save();
+
+    return res.status(200).json(
+      new ApiResponse(200,null,"Password changed successfully"));
+  }
+);
+
+const resetPassword = asyncHandler(async (req, res) => {
+    const { id } = req.params;
+
+    const { newPassword } =req.body;
+
+    if (!newPassword?.trim()) {
+      throw new ApiError(400,"newPassword is required" );
+    }
+
+    const user =await User.findById(id).select("+password");
+
+    if (!user) {
+      throw new ApiError(404,"User not found");
+    }
+
+    user.password =await hashPassword(newPassword);
+
+    await user.save();
+
+    return res.status(200).json(
+      new ApiResponse(200,null,"Password reset successfully"));
+  }
+);
+
 const softDeleteUser = asyncHandler(async (req, res) => {
-  const user = await User.findById(req.params.id);
-  if (!user) throw new ApiError(404, "User not found");
+    const { id } = req.params;
 
-  user.isActive = false;
-  await user.save();
+    const user =await User.findOneAndUpdate(
+        {
+          _id: id,
+          isDeleted: false,
+        },
+        {
+          isDeleted: true,
+          deletedAt: new Date(),
+          isActive: false,
+        },
+        {
+          new: true,
+        }
+      )
+        .select("-password")
+        .lean();
 
-  res.json(new ApiResponse(200, user, "User deactivated"));
-});
+    if (!user) {
+      throw new ApiError(404,"User not found");
+    }
 
-/* ======================================================
-   EXPORTS
-====================================================== */
+    return res.status(200).json(
+      new ApiResponse(200,user,"User soft deleted successfully"));
+  }
+);
+
+
+const restoreUser = asyncHandler(async (req, res) => {
+    const { id } = req.params;
+
+    const user =await User.findOneAndUpdate(
+        {
+          _id: id,
+          isDeleted: true,
+        },
+        {
+          isDeleted: false,
+          deletedAt: null,
+          isActive: true,
+        },
+        {
+          new: true,
+        }
+      )
+        .select("-password")
+        .lean();
+
+    if (!user) {
+      throw new ApiError(404,"Deleted user not found");
+    }
+
+    return res.status(200).json(
+      new ApiResponse(200,user,"User restored successfully"));
+  }
+);
+
+const hardDeleteUser = asyncHandler(async (req, res) => {
+    const { id } = req.params;
+
+    const user =await User.findByIdAndDelete(id);
+
+    if (!user) {
+      throw new ApiError(404,"User not found");
+    }
+
+    return res.status(200).json(
+      new ApiResponse(200,null,"User permanently deleted"));
+  }
+);
+
 module.exports = {
   createUser,
-  loginUser,
-  logoutUser,
   getUsers,
   getUserById,
   updateUser,
+  updateUserStatus,
+  changePassword,
+  resetPassword,
   softDeleteUser,
+  restoreUser,
+  hardDeleteUser,
 };

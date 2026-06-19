@@ -1,19 +1,13 @@
 const ApiError = require("../utils/ApiError");
 
-/**
- * @param  {...string} roles - allowed user roles
- * @example authorize("admin", "hr")
- */
-const authorize = (...roles) => {
+const authorizeRoles = (...roles) => {
   return (req, res, next) => {
-    if (!req.user) {
-      throw new ApiError(401, "Not authenticated");
-    }
-
-    if (!roles.includes(req.user.type)) {
+    if (
+      !roles.includes(req.user.role)
+    ) {
       throw new ApiError(
         403,
-        `Access denied for role: ${req.user.type}`
+        "Access denied"
       );
     }
 
@@ -21,4 +15,4 @@ const authorize = (...roles) => {
   };
 };
 
-module.exports = authorize;
+module.exports = authorizeRoles;
