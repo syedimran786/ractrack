@@ -18,6 +18,8 @@ const enquiryRoutes = require("./routes/enquiry.routes");
 const interviewRoutes = require("./routes/interview.routes");
 const paymentRoutes = require("./routes/payment.routes");
 const paymentTransactionRoutes = require("./routes/paymentTransaction.routes");
+const userRoutes = require("./routes/user.routes");
+const authRoutes = require("./routes/auth.routes");
 
 
 
@@ -88,6 +90,8 @@ app.use("/api/enquiries", enquiryRoutes);
 app.use("/api/interviews", interviewRoutes);
 app.use("/api/payments", paymentRoutes);
 app.use("/api/payment-transactions",paymentTransactionRoutes);
+app.use("/api/user",userRoutes);
+app.use("/api/auth", authRoutes);
 
 
 

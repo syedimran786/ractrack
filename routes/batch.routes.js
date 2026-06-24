@@ -9,9 +9,15 @@ const {
   restoreBatch,
   hardDeleteBatch,
 } = require("../controllers/batch.controller");
+const authorizeRoles = require("../middlewares/authorizeRoles.middleware");
+const verifyJWT = require("../middlewares/auth.middleware");
+const checkPasswordChange = require("../middlewares/checkPasswordChange.middleware");
 
 
-router.post("/addbatch", createBatch);
+router.post("/addbatch",verifyJWT,checkPasswordChange, authorizeRoles(
+    "super admin",
+    "admin"
+  ), createBatch);
 router.get("/getbatches", getBatches);
 router.get("/getbatch/:id", getBatchById);
 router.put("/updatebatch/:id", updateBatch);

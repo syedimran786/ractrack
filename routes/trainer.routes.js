@@ -16,7 +16,7 @@ const {
 router.post(
   "/add",
   multiFileUpload([{ name: "trainerImage", maxCount: 1 }]),
-  createTrainer
+  createTrainer,
 );
 
 router.get("/", getTrainers);
@@ -26,7 +26,7 @@ router.get("/:id", getTrainerById);
 router.put(
   "/update/:id",
   multiFileUpload([{ name: "trainerImage", maxCount: 1 }]),
-  updateTrainer
+  updateTrainer,
 );
 
 router.patch("/soft-delete/:id", softDeleteTrainer);

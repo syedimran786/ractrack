@@ -16,7 +16,7 @@ const sendMail = async ({
     });
 
   return await transporter.sendMail({
-    from: `"Student Management" <${process.env.EMAIL_USER}>`,
+    from: `"Rest Coder Academy" <${process.env.EMAIL_USER}>`,
     to,
     subject,
     html,

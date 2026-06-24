@@ -28,12 +28,15 @@ const userSchema = new Schema(
     role: {
       type: String,
       enum: [
+        "super admin",
         "admin",
         "hr",
         "counsellor",
         "branding",
         "trainer",
         "bd",
+        "fee collector",
+        "student",
       ],
       required: true,
       index: true,
@@ -44,15 +47,19 @@ const userSchema = new Schema(
       default: true,
       index: true,
     },
+
     refreshToken: {
       type: String,
       default: null,
+      select: false,
     },
+
     mustChangePassword: {
-  type: Boolean,
-  default: true,
-  index: true,
-},
+      type: Boolean,
+      default: true,
+      index: true,
+    },
+
     isDeleted: {
       type: Boolean,
       default: false,
@@ -100,4 +107,7 @@ userSchema.methods.generateRefreshToken =
     );
   };
 
-module.exports = model("User", userSchema);
+module.exports = model(
+  "User",
+  userSchema
+);

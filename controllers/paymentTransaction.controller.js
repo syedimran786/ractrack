@@ -89,8 +89,7 @@ const addPaymentTransaction = asyncHandler(async (req, res) => {
     if (!student) {
       throw new ApiError(
         404,
-        "Student not found"
-      );
+        "Student not found");
     }
 
     const receiptNumber =

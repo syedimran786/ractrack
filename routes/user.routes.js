@@ -1,3 +1,5 @@
+const express = require("express");
+const router = express.Router();
 const { 
   createUser, 
   getUsers, 
@@ -8,7 +10,8 @@ const {
   resetPassword, 
   softDeleteUser, 
   restoreUser, 
-  hardDeleteUser } = require("../controllers/user.controller");
+  hardDeleteUser, 
+  resendCredentials} = require("../controllers/user.controller.js");
 
 router.post("/add", createUser);
 
@@ -29,3 +32,8 @@ router.patch( "/soft-delete/:id", softDeleteUser);
 router.patch("/restore/:id",restoreUser);
 
 router.delete("/hard-delete/:id",hardDeleteUser);
+
+router.post("/resend-credentials/:id",resendCredentials);
+
+
+module.exports=router;

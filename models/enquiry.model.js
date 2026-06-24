@@ -49,7 +49,7 @@ const enquirySchema = new Schema(
 
     status: {
       type: String,
-      enum: ["new", "followup", "interested", "not interested", "converted"],
+      enum: ["new", "followup", "interested", "not interested", "converted","next batch"],
       default: "new",
       index: true,
     },

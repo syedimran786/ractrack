@@ -4,14 +4,13 @@ const userCredentialsTemplate = ({
   password,
   role,
 }) => {
+
+  
   return `
     <div style="font-family: Arial, sans-serif; max-width:600px; margin:auto;">
       
-      <h2>Welcome to Student Management System</h2>
-
-      <p>Hello <strong>${fullname}</strong>,</p>
-
-      <p>Your account has been created successfully.</p>
+      <h2>Hello, ${fullname} Your account has been created successfully. <br/>
+       Below are your Login Credentials</h2>
 
       <table cellpadding="8" cellspacing="0" border="1">
         <tr>
