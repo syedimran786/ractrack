@@ -1,17 +1,18 @@
 const express = require("express");
 const router = express.Router();
-const { 
-  createUser, 
-  getUsers, 
-  getUserById, 
-  updateUser, 
-  updateUserStatus, 
-  changePassword, 
-  resetPassword, 
-  softDeleteUser, 
-  restoreUser, 
-  hardDeleteUser, 
-  resendCredentials} = require("../controllers/user.controller.js");
+const {
+  createUser,
+  getUsers,
+  getUserById,
+  updateUser,
+  updateUserStatus,
+  changePassword,
+  resetPassword,
+  softDeleteUser,
+  restoreUser,
+  hardDeleteUser,
+  resendCredentials,
+} = require("../controllers/user.controller.js");
 
 router.post("/add", createUser);
 
@@ -23,17 +24,16 @@ router.put("/update/:id", updateUser);
 
 router.patch("/status/:id", updateUserStatus);
 
-router.patch("/change-password/:id",changePassword);
+router.patch("/change-password/:id", changePassword);
 
-router.patch("/reset-password/:id",resetPassword);
+router.patch("/reset-password/:id", resetPassword);
 
-router.patch( "/soft-delete/:id", softDeleteUser);
+router.patch("/soft-delete/:id", softDeleteUser);
 
-router.patch("/restore/:id",restoreUser);
+router.patch("/restore/:id", restoreUser);
 
-router.delete("/hard-delete/:id",hardDeleteUser);
+router.delete("/hard-delete/:id", hardDeleteUser);
 
-router.post("/resend-credentials/:id",resendCredentials);
+router.post("/resend-credentials/:id", resendCredentials);
 
-
-module.exports=router;
+module.exports = router;

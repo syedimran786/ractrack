@@ -12,27 +12,30 @@ const {
   restoreTrainer,
   deleteTrainer,
 } = require("../controllers/trainer.controller");
+const authorizeRoles = require("../middlewares/authorizeRoles.middleware");
 
 router.post(
   "/add",
   multiFileUpload([{ name: "trainerImage", maxCount: 1 }]),
+   authorizeRoles("super admin", "admin", "counsellor","branding"),
   createTrainer,
 );
 
 router.get("/", getTrainers);
 
-router.get("/:id", getTrainerById);
+router.get("/:id", authorizeRoles("super admin", "admin"), getTrainerById);
 
 router.put(
   "/update/:id",
   multiFileUpload([{ name: "trainerImage", maxCount: 1 }]),
+  authorizeRoles("super admin", "admin"),
   updateTrainer,
 );
 
-router.patch("/soft-delete/:id", softDeleteTrainer);
+router.patch("/soft-delete/:id", authorizeRoles("super admin", "admin"), softDeleteTrainer);
 
-router.patch("/restore/:id", restoreTrainer);
+router.patch("/restore/:id", authorizeRoles("super admin", "admin"), restoreTrainer);
 
-router.delete("/hard-delete/:id", deleteTrainer);
+router.delete("/hard-delete/:id", authorizeRoles("super admin", "admin"), deleteTrainer);
 
 module.exports = router;

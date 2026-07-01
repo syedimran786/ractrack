@@ -14,10 +14,7 @@ const verifyJWT = require("../middlewares/auth.middleware");
 const checkPasswordChange = require("../middlewares/checkPasswordChange.middleware");
 
 
-router.post("/addbatch",verifyJWT,checkPasswordChange, authorizeRoles(
-    "super admin",
-    "admin"
-  ), createBatch);
+router.post("/addbatch", createBatch);
 router.get("/getbatches", getBatches);
 router.get("/getbatch/:id", getBatchById);
 router.put("/updatebatch/:id", updateBatch);

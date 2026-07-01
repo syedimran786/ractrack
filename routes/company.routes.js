@@ -12,6 +12,9 @@ const {
   restoreCompany,
   deleteCompany,
 } = require("../controllers/company.controller");
+const authorizeRoles = require("../middlewares/authorizeRoles.middleware");
+const verifyJWT = require("../middlewares/auth.middleware");
+const checkPasswordChange = require("../middlewares/checkPasswordChange.middleware");
 
 /* ======================================================
    COMPANY ROUTES (REST STANDARD)
@@ -20,31 +23,58 @@ const {
 // Create Company
 router.post(
   "/add",
+   verifyJWT, checkPasswordChange,authorizeRoles(
+    "super admin",
+    "admin",
+    "branding",
+    "hr",
+  ),
   multiFileUpload([{ name: "companyImage", maxCount: 1 }]),
-  createCompany
+  createCompany,
 );
 
 // Get All Companies
 router.get("/", getCompanies);
 
 // Get Single Company
-router.get("/:id", getCompanyById);
+router.get("/:id",verifyJWT, checkPasswordChange,authorizeRoles(
+    "super admin",
+    "admin",
+    "branding",
+    "hr",
+  ), getCompanyById);
 
 // Update Company
 router.put(
   "/update/:id",
+  verifyJWT,
+  checkPasswordChange,
+  authorizeRoles(
+    "super admin",
+    "admin",
+    "branding",
+    "hr"
+  ),
   multiFileUpload([{ name: "companyImage", maxCount: 1 }]),
-  updateCompany
+  updateCompany,
 );
 
 // Soft Delete
-router.patch("/soft-delete/:id", softDeleteCompany);
+router.patch("/soft-delete/:id", verifyJWT, checkPasswordChange, authorizeRoles(
+  "super admin",
+  "admin"
+), softDeleteCompany);
 
 // Restore Company
-router.patch("/restore/:id", restoreCompany);
+router.patch("/restore/:id", verifyJWT, checkPasswordChange, authorizeRoles(
+  "super admin",
+  "admin"
+), restoreCompany);
 
 // Hard Delete
-router.delete("/hard-delete/:id", deleteCompany);
+router.delete("/hard-delete/:id", verifyJWT, checkPasswordChange, authorizeRoles(
+  "super admin",
+  "admin"
+), deleteCompany);
 
 module.exports = router;
-  

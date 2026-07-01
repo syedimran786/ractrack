@@ -22,7 +22,7 @@ const login = asyncHandler(async (req, res) => {
   }).select("+password");
 
   if (!user) {
-    throw new ApiError(401, "Invalid credentials");
+    throw new ApiError(401, "Account does not exist");
   }
 
   if (!user.isActive) {
@@ -32,7 +32,7 @@ const login = asyncHandler(async (req, res) => {
   const isPasswordValid = await comparePassword(password, user.password);
 
   if (!isPasswordValid) {
-    throw new ApiError(401, "Invalid credentials");
+    throw new ApiError(401, "Invalid Password");
   }
 
   const accessToken = user.generateAccessToken();
